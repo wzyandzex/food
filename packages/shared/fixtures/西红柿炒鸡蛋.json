@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "recipe.v1",
+  "title": "西红柿炒鸡蛋",
+  "servings": 2,
+  "difficulty": 1,
+  "minutes": 10,
+  "tags": ["家常", "快手", "下饭"],
+  "ingredients": [
+    { "name": "鸡蛋", "qty": 3, "unit": "个" },
+    { "name": "西红柿", "qty": 2, "unit": "个" },
+    { "name": "小葱", "qty": 1, "unit": "根", "optional": true },
+    { "name": "盐", "qty": 3, "unit": "g" },
+    { "name": "糖", "qty": 5, "unit": "g", "optional": true }
+  ],
+  "steps": [
+    { "text": "西红柿切滚刀块，鸡蛋加少许盐打散", "durationMinutes": 2 },
+    { "text": "热锅冷油，倒入蛋液，凝固后快速划散盛出", "durationMinutes": 1 },
+    { "text": "补少许油，下西红柿翻炒出汁，加盐和糖调味", "durationMinutes": 3 },
+    { "text": "倒回鸡蛋翻炒均匀，撒葱花出锅", "durationMinutes": 1 }
+  ],
+  "nutrition": { "calories": 180 },
+  "sourceType": "llm",
+  "authorNote": "AI 生成样例，已人工校验"
+}

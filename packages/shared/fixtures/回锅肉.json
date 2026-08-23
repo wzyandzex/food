@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "recipe.v1",
+  "title": "回锅肉",
+  "servings": 3,
+  "difficulty": 3,
+  "minutes": 35,
+  "tags": ["川菜", "硬菜", "下饭"],
+  "ingredients": [
+    { "name": "带皮五花肉", "qty": 500, "unit": "g" },
+    { "name": "蒜苗", "qty": 150, "unit": "g" },
+    { "name": "郫县豆瓣酱", "qty": 20, "unit": "g" },
+    { "name": "甜面酱", "qty": 10, "unit": "g", "optional": true },
+    { "name": "豆豉", "qty": 10, "unit": "g", "optional": true },
+    { "name": "姜", "qty": 15, "unit": "g" },
+    { "name": "料酒", "qty": 15, "unit": "ml" }
+  ],
+  "steps": [
+    { "text": "五花肉整块冷水下锅，加姜片料酒，煮约 20 分钟至筷子可插透", "durationMinutes": 20 },
+    { "text": "捞出晾凉，切 2 毫米薄片；蒜苗斜切段", "durationMinutes": 5 },
+    { "text": "中火煸炒肉片至微卷出油（灯盏窝状）", "durationMinutes": 4 },
+    { "text": "下豆瓣酱、豆豉炒出红油，加甜面酱炒匀", "durationMinutes": 2 },
+    { "text": "下蒜苗断生即出锅", "durationMinutes": 1 }
+  ],
+  "sourceType": "llm",
+  "authorNote": "AI 生成样例，已人工校验"
+}
