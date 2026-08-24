@@ -1,4 +1,0 @@
-{
-  "buildCommand": "cd ../.. && pnpm install --frozen-lockfile && pnpm -F @kaifan/admin build",
-  "outputDirectory": ".next"
-}

@@ -1,4 +1,0 @@
-{
-  "buildCommand": "cd ../.. && pnpm install --frozen-lockfile && pnpm -F @kaifan/web build",
-  "outputDirectory": ".next"
-}
