@@ -1,5 +1,4 @@
 {
-  "buildCommand": "cd ../.. && pnpm install && pnpm build:admin",
-  "installCommand": "echo 'Skipping default install, using buildCommand'",
-  "framework": "nextjs"
+  "buildCommand": "cd ../.. && pnpm install --frozen-lockfile && pnpm -F @kaifan/admin build",
+  "outputDirectory": ".next"
 }

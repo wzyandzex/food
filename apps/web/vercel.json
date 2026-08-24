@@ -1,5 +1,4 @@
 {
-  "buildCommand": "cd ../.. && pnpm install && pnpm build:web",
-  "installCommand": "echo 'Skipping default install, using buildCommand'",
-  "framework": "nextjs"
+  "buildCommand": "cd ../.. && pnpm install --frozen-lockfile && pnpm -F @kaifan/web build",
+  "outputDirectory": ".next"
 }
