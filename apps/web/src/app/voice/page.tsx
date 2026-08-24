@@ -3,6 +3,14 @@
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 
+interface SearchResult {
+  id: string
+  title: string
+  difficulty: number
+  minutes: number
+  tags: string[]
+}
+
 /** 最小结构类型：仅覆盖本页用到的 Web Speech API 面 */
 interface RecognitionEventLike {
   resultIndex: number
@@ -44,6 +52,8 @@ export default function VoicePage() {
   const [interimText, setInterimText] = useState('')
   const [errorText, setErrorText] = useState('')
   const [mediaRecorderSupported, setMediaRecorderSupported] = useState(false)
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
+  const [searching, setSearching] = useState(false)
   const recognitionRef = useRef<RecognitionLike | null>(null)
 
   useEffect(() => {
@@ -51,6 +61,20 @@ export default function VoicePage() {
     setMediaRecorderSupported(typeof window !== 'undefined' && typeof window.MediaRecorder !== 'undefined')
     return () => recognitionRef.current?.stop()
   }, [])
+
+  const searchRecipes = async (query: string) => {
+    if (!query.trim()) return
+    setSearching(true)
+    try {
+      const response = await fetch(`/api/recipes/search?q=${encodeURIComponent(query)}`)
+      const body = (await response.json()) as { recipes: SearchResult[] }
+      setSearchResults(body.recipes)
+    } catch {
+      setSearchResults([])
+    } finally {
+      setSearching(false)
+    }
+  }
 
   const startListening = () => {
     const Ctor = getRecognitionCtor()
@@ -69,7 +93,13 @@ export default function VoicePage() {
         if (result?.isFinal) finalChunk += transcript
         else interimChunk += transcript
       }
-      if (finalChunk) setFinalText((prev) => prev + finalChunk)
+      if (finalChunk) {
+        setFinalText((prev) => {
+          const next = prev + finalChunk
+          void searchRecipes(next)
+          return next
+        })
+      }
       setInterimText(interimChunk)
     }
     recognition.onerror = (event) => {
@@ -133,6 +163,27 @@ export default function VoicePage() {
           <span className="text-ink/40">{interimText}</span>
           {!finalText && !interimText && <span className="text-ink/30">识别文本会显示在这里…</span>}
         </div>
+
+        {(searching || searchResults.length > 0) && (
+          <div className="mt-4">
+            <h3 className="mb-2 text-sm font-semibold text-ink/70">
+              {searching ? '搜索中…' : `找到 ${searchResults.length} 道菜`}
+            </h3>
+            <ul className="space-y-2">
+              {searchResults.map((recipe) => (
+                <li key={recipe.id}>
+                  <Link
+                    href={`/recipes/${encodeURIComponent(recipe.id)}`}
+                    className="flex items-center justify-between rounded-lg bg-white px-4 py-3 text-sm shadow-sm"
+                  >
+                    <span className="font-medium">{recipe.title}</span>
+                    <span className="text-xs text-ink/45">⏱ {recipe.minutes} 分钟</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </section>
 
       <section className="mb-6 rounded-2xl bg-white p-5 shadow-sm">

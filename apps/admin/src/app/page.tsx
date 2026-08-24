@@ -17,12 +17,20 @@ export default function AdminHomePage() {
           <h1 className="text-xl font-bold">开饭 · 管理端</h1>
           <p className="mt-1 text-sm text-neutral-500">菜谱导入管线与内容管理</p>
         </div>
-        <Link
-          href="/login"
-          className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white"
-        >
-          登录
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/import"
+            className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
+          >
+            导入菜谱
+          </Link>
+          <Link
+            href="/login"
+            className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white"
+          >
+            登录
+          </Link>
+        </div>
       </header>
 
       <section className="mb-8 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
