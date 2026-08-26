@@ -9,7 +9,8 @@ interface IngredientRow {
   qty: number | null
   unit: string | null
   optional: boolean
-  ingredients: { name: string }[] | null
+  // 多对一嵌入：recipe_ingredients.ingredient_id 是单值 FK，PostgREST 返回对象而非数组
+  ingredients: { name: string } | null
 }
 
 interface StepLike {
@@ -18,59 +19,61 @@ interface StepLike {
 }
 
 async function fetchRecipe(id: string): Promise<RecipeV1 | null> {
-  try {
-    const supabase = createServerClient()
-    const { data, error } = await supabase
-      .from('recipes')
-      .select(
-        'title, cover_url, servings, difficulty, minutes, tags, nutrition, steps, source_type, source_url, ai_generated, recipe_ingredients(qty, unit, optional, ingredients(name))',
-      )
-      .eq('id', id)
-      .is('deleted_at', null)
-      .single()
+  const supabase = createServerClient()
+  const { data, error } = await supabase
+    .from('recipes')
+    .select(
+      'title, cover_url, servings, difficulty, minutes, tags, nutrition, steps, source_type, source_url, ai_generated, recipe_ingredients(qty, unit, optional, ingredients(name))',
+    )
+    .eq('id', id)
+    .eq('status', 'published')
+    .is('deleted_at', null)
+    .maybeSingle()
 
-    if (error || !data) return null
-
-    const row = data as {
-      title: string
-      cover_url: string | null
-      servings: number
-      difficulty: number
-      minutes: number
-      tags: string[]
-      nutrition: Record<string, number> | null
-      steps: StepLike[]
-      source_type: string
-      source_url: string | null
-      ai_generated: boolean
-      recipe_ingredients: IngredientRow[]
-    }
-
-    return {
-      schemaVersion: 'recipe.v1' as const,
-      title: row.title,
-      cover: row.cover_url ?? undefined,
-      servings: row.servings,
-      difficulty: row.difficulty,
-      minutes: row.minutes,
-      tags: row.tags,
-      ingredients: row.recipe_ingredients.map((item) => ({
-        name: item.ingredients?.[0]?.name ?? '',
-        qty: item.qty ?? undefined,
-        unit: item.unit ?? undefined,
-        optional: item.optional,
-      })),
-      steps: row.steps.map((step, index) => ({
-        text: step.text ?? `步骤 ${index + 1}`,
-        durationMinutes: step.durationMinutes,
-      })),
-      nutrition: row.nutrition ?? undefined,
-      sourceType: row.source_type as RecipeV1['sourceType'],
-      sourceUrl: row.source_url ?? undefined,
-      authorNote: row.ai_generated ? 'AI 生成，仅供参考' : undefined,
-    }
-  } catch {
+  if (error) {
+    // 查询异常不等同于「不存在」：记录日志后按未找到处理，避免泄露内部错误
+    console.error('菜谱详情查询失败：', error.message)
     return null
+  }
+  if (!data) return null
+
+  const row = data as unknown as {
+    title: string
+    cover_url: string | null
+    servings: number
+    difficulty: number
+    minutes: number
+    tags: string[]
+    nutrition: Record<string, number> | null
+    steps: StepLike[]
+    source_type: string
+    source_url: string | null
+    ai_generated: boolean
+    recipe_ingredients: IngredientRow[]
+  }
+
+  return {
+    schemaVersion: 'recipe.v1' as const,
+    title: row.title,
+    cover: row.cover_url ?? undefined,
+    servings: row.servings,
+    difficulty: row.difficulty,
+    minutes: row.minutes,
+    tags: row.tags,
+    ingredients: row.recipe_ingredients.map((item) => ({
+      name: item.ingredients?.name ?? '',
+      qty: item.qty ?? undefined,
+      unit: item.unit ?? undefined,
+      optional: item.optional,
+    })),
+    steps: row.steps.map((step, index) => ({
+      text: step.text ?? `步骤 ${index + 1}`,
+      durationMinutes: step.durationMinutes,
+    })),
+    nutrition: row.nutrition ?? undefined,
+    sourceType: row.source_type as RecipeV1['sourceType'],
+    sourceUrl: row.source_url ?? undefined,
+    authorNote: row.ai_generated ? 'AI 生成，仅供参考' : undefined,
   }
 }
 

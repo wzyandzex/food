@@ -2,7 +2,7 @@ import Link from 'next/link'
 
 import { SAMPLE_RECIPES } from '@kaifan/shared'
 
-import { createServerClient } from '@/lib/supabase'
+import { createServerClient, isSupabaseConfigured } from '@/lib/supabase'
 
 interface RecipeRow {
   id: string
@@ -10,8 +10,6 @@ interface RecipeRow {
   difficulty: number
   minutes: number
   tags: string[]
-  steps: unknown
-  ingredients: unknown
 }
 
 interface RecipeCard {
@@ -22,35 +20,41 @@ interface RecipeCard {
   tags: string[]
 }
 
+/** 样例数据降级：仅在服务端数据源「未配置」时使用，保证本地可预览 */
+function sampleCards(): RecipeCard[] {
+  return SAMPLE_RECIPES.map((recipe) => ({
+    id: recipe.title,
+    title: recipe.title,
+    difficulty: recipe.difficulty,
+    minutes: recipe.minutes,
+    tags: recipe.tags,
+  }))
+}
+
 async function fetchRecipes(): Promise<RecipeCard[]> {
-  try {
-    const supabase = createServerClient()
-    const { data, error } = await supabase
-      .from('recipes')
-      .select('id, title, difficulty, minutes, tags, steps, ingredients')
-      .eq('status', 'published')
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
+  if (!isSupabaseConfigured()) return sampleCards()
 
-    if (error) throw error
+  const supabase = createServerClient()
+  const { data, error } = await supabase
+    .from('recipes')
+    .select('id, title, difficulty, minutes, tags')
+    .eq('status', 'published')
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
 
-    return (data as RecipeRow[]).map((row) => ({
-      id: row.id,
-      title: row.title,
-      difficulty: row.difficulty,
-      minutes: row.minutes,
-      tags: row.tags,
-    }))
-  } catch {
-    // 未配置 Supabase 时降级到样例数据，保证页面可预览
-    return SAMPLE_RECIPES.map((recipe) => ({
-      id: recipe.title,
-      title: recipe.title,
-      difficulty: recipe.difficulty,
-      minutes: recipe.minutes,
-      tags: recipe.tags,
-    }))
+  if (error) {
+    // 查询失败是异常而非「没有数据」：记日志并返回空列表，让页面呈现真实状态
+    console.error('菜谱市场列表查询失败：', error.message)
+    return []
   }
+
+  return (data as RecipeRow[]).map((row) => ({
+    id: row.id,
+    title: row.title,
+    difficulty: row.difficulty,
+    minutes: row.minutes,
+    tags: row.tags,
+  }))
 }
 
 export default async function RecipesPage() {
