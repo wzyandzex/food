@@ -45,16 +45,38 @@ const FALLBACK_CHAIN = [
   { name: '③ 录音上传 + 服务端 ASR', desc: 'MediaRecorder 录音上传，服务端转写（M1 接入）' },
 ]
 
+const POPULAR_SEARCHES = ['西红柿炒鸡蛋', '回锅肉', '红烧肉', '青椒土豆丝', '可乐鸡翅']
+
+/** 把 Web Speech 错误码转为面向用户的友好中文提示（PRD §6#9） */
+function formatRecognitionError(error: string): string {
+  switch (error) {
+    case 'not-allowed':
+    case 'service-not-allowed':
+      return '麦克风权限已被拒绝，请在浏览器或系统设置中允许使用麦克风'
+    case 'no-speech':
+      return '没听清，请再说一次，或直接在下方输入'
+    case 'audio-capture':
+      return '未找到可用的麦克风设备'
+    case 'network':
+      return '语音服务网络异常，请改用文字搜索'
+    default:
+      return '没听清，请再说一次或改用文字搜索'
+  }
+}
+
 export default function VoicePage() {
   const [supported, setSupported] = useState<boolean | null>(null)
   const [listening, setListening] = useState(false)
   const [finalText, setFinalText] = useState('')
   const [interimText, setInterimText] = useState('')
   const [errorText, setErrorText] = useState('')
+  const [manualText, setManualText] = useState('')
   const [mediaRecorderSupported, setMediaRecorderSupported] = useState(false)
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [searching, setSearching] = useState(false)
+  const [searched, setSearched] = useState(false)
   const recognitionRef = useRef<RecognitionLike | null>(null)
+  const accumulatedFinalRef = useRef('')
 
   useEffect(() => {
     setSupported(getRecognitionCtor() !== null)
@@ -63,12 +85,14 @@ export default function VoicePage() {
   }, [])
 
   const searchRecipes = async (query: string) => {
-    if (!query.trim()) return
+    const trimmed = query.trim()
+    if (!trimmed) return
     setSearching(true)
+    setSearched(true)
     try {
-      const response = await fetch(`/api/recipes/search?q=${encodeURIComponent(query)}`)
+      const response = await fetch(`/api/recipes/search?q=${encodeURIComponent(trimmed)}`)
       const body = (await response.json()) as { recipes: SearchResult[] }
-      setSearchResults(body.recipes)
+      setSearchResults(body.recipes ?? [])
     } catch {
       setSearchResults([])
     } finally {
@@ -76,14 +100,35 @@ export default function VoicePage() {
     }
   }
 
+  const handleManualSearch = (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!manualText.trim()) return
+    setFinalText(manualText)
+    void searchRecipes(manualText)
+  }
+
+  const handleQuickSearch = (keyword: string) => {
+    setManualText(keyword)
+    setFinalText(keyword)
+    void searchRecipes(keyword)
+  }
+
   const startListening = () => {
     const Ctor = getRecognitionCtor()
     if (!Ctor) return
+
+    accumulatedFinalRef.current = ''
+    setErrorText('')
+    setFinalText('')
+    setInterimText('')
+    setSearchResults([])
+    setSearched(false)
 
     const recognition = new Ctor()
     recognition.lang = 'zh-CN'
     recognition.continuous = true
     recognition.interimResults = true
+
     recognition.onresult = (event) => {
       let finalChunk = ''
       let interimChunk = ''
@@ -93,24 +138,30 @@ export default function VoicePage() {
         if (result?.isFinal) finalChunk += transcript
         else interimChunk += transcript
       }
+
       if (finalChunk) {
-        setFinalText((prev) => {
-          const next = prev + finalChunk
-          void searchRecipes(next)
-          return next
-        })
+        accumulatedFinalRef.current += finalChunk
+        const currentText = accumulatedFinalRef.current
+        setFinalText(currentText)
+        // 副作用在事件处理器内直接触发，不写在 setState updater 内部
+        void searchRecipes(currentText)
       }
       setInterimText(interimChunk)
     }
+
     recognition.onerror = (event) => {
-      setErrorText(`识别出错：${event.error}（not-allowed 表示麦克风权限被拒绝）`)
+      setErrorText(formatRecognitionError(event.error))
       setListening(false)
     }
-    recognition.onend = () => setListening(false)
 
-    setErrorText('')
-    setFinalText('')
-    setInterimText('')
+    recognition.onend = () => {
+      setListening(false)
+      // 若识别结束时未获得任何文字且无显式报错，按「没听清」提示兜底
+      if (!accumulatedFinalRef.current.trim()) {
+        setErrorText((prev) => prev || '没听清，请再说一次或改用文字搜索')
+      }
+    }
+
     recognitionRef.current = recognition
     recognition.start()
     setListening(true)
@@ -126,9 +177,9 @@ export default function VoicePage() {
       <Link href="/" className="mb-6 text-sm text-ink/50">
         ← 返回首页
       </Link>
-      <h1 className="mb-1 text-xl font-bold">🎙️ 语音搜索能力测试</h1>
+      <h1 className="mb-1 text-xl font-bold">🎙️ 语音搜索</h1>
       <p className="mb-6 text-sm text-ink/60">
-        试着说：「西红柿炒鸡蛋怎么做」「回锅肉」
+        按住说话，或直接说出想做的菜
       </p>
 
       <section className="mb-6 rounded-2xl bg-white p-5 shadow-sm">
@@ -141,7 +192,7 @@ export default function VoicePage() {
               ? '检测中…'
               : supported
                 ? 'Web Speech API 可用'
-                : 'Web Speech API 不可用（将走降级链路）'}
+                : 'Web Speech API 不可用（请使用文字输入或键盘听写）'}
           </span>
         </div>
 
@@ -156,16 +207,53 @@ export default function VoicePage() {
           {listening ? '⏹ 停止识别' : '🎤 开始说话'}
         </button>
 
-        {errorText && <p className="mt-3 text-sm text-red-600">{errorText}</p>}
+        {errorText && (
+          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
+            {errorText}
+          </div>
+        )}
 
-        <div className="mt-4 min-h-24 rounded-xl bg-brand-soft p-4 text-[15px] leading-7">
+        <div className="mt-4 min-h-20 rounded-xl bg-brand-soft p-4 text-[15px] leading-7">
           {finalText}
           <span className="text-ink/40">{interimText}</span>
           {!finalText && !interimText && <span className="text-ink/30">识别文本会显示在这里…</span>}
         </div>
 
-        {(searching || searchResults.length > 0) && (
-          <div className="mt-4">
+        {/* 文字搜索兜底输入框（PRD §6#9） */}
+        <form onSubmit={handleManualSearch} className="mt-4 flex gap-2">
+          <input
+            type="text"
+            value={manualText}
+            onChange={(event) => setManualText(event.target.value)}
+            placeholder="没听清？直接输菜名试试"
+            className="flex-1 rounded-xl border border-neutral-200 bg-neutral-50 px-3.5 py-2 text-sm outline-none focus:border-brand focus:bg-white focus:ring-2 focus:ring-brand/20"
+          />
+          <button
+            type="submit"
+            disabled={!manualText.trim() || searching}
+            className="shrink-0 rounded-xl bg-neutral-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+          >
+            搜索
+          </button>
+        </form>
+
+        {/* 热门推荐占位（PRD §6#9） */}
+        <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-ink/60">
+          <span>热门：</span>
+          {POPULAR_SEARCHES.map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => handleQuickSearch(item)}
+              className="rounded-full bg-neutral-100 px-2.5 py-1 text-ink/70 active:bg-neutral-200"
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+
+        {(searching || (searched && searchResults.length > 0)) && (
+          <div className="mt-5 border-t border-neutral-100 pt-4">
             <h3 className="mb-2 text-sm font-semibold text-ink/70">
               {searching ? '搜索中…' : `找到 ${searchResults.length} 道菜`}
             </h3>
@@ -174,7 +262,7 @@ export default function VoicePage() {
                 <li key={recipe.id}>
                   <Link
                     href={`/recipes/${encodeURIComponent(recipe.id)}`}
-                    className="flex items-center justify-between rounded-lg bg-white px-4 py-3 text-sm shadow-sm"
+                    className="flex items-center justify-between rounded-lg bg-white px-4 py-3 text-sm shadow-sm active:bg-neutral-50"
                   >
                     <span className="font-medium">{recipe.title}</span>
                     <span className="text-xs text-ink/45">⏱ {recipe.minutes} 分钟</span>
@@ -182,6 +270,12 @@ export default function VoicePage() {
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {searched && !searching && searchResults.length === 0 && (
+          <div className="mt-5 border-t border-neutral-100 pt-4 text-center text-xs text-ink/50">
+            未找到匹配的菜谱，换个词试试
           </div>
         )}
       </section>
