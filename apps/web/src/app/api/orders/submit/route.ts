@@ -40,7 +40,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '点单链接无效' }, { status: 400 })
     }
 
-    if (tokenData.revoked || new Date(tokenData.expires_at).getTime() < Date.now()) {
+    if (tokenData.revoked || new Date(tokenData.expires_at).getTime() <= Date.now()) {
       return NextResponse.json({ error: '点单链接已过期或已失效' }, { status: 400 })
     }
 
@@ -48,6 +48,11 @@ export async function POST(request: Request) {
     const session = tokenData.order_sessions as any
     if (session?.status !== 'open') {
       return NextResponse.json({ error: '该点单已截单或已结束' }, { status: 400 })
+    }
+
+    // 截止时间锁定：超过 deadline 的提交一律拒绝（PRD §6.2 截止后锁定只读）
+    if (session?.deadline && new Date(session.deadline).getTime() <= Date.now()) {
+      return NextResponse.json({ error: '已超过截止时间，这场点单不再收单' }, { status: 400 })
     }
 
     // 2. 幂等 upsert 点单明细
