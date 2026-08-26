@@ -64,30 +64,34 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: `状态更新失败：${updateError.message}` }, { status: 500 })
     }
 
-    // 通知所有已绑定身份的点单人（M2 通知中心）
+    // 通知所有已绑定身份的点单人（M2 通知中心；best-effort，失败不阻塞主流程）
     try {
-      const { data: participants } = await supabase
+      const { data: participants, error: participantsError } = await supabase
         .from('order_entries')
         .select('orderer_user_id')
         .eq('order_session_id', id)
         .not('orderer_user_id', 'is', null)
 
-      const userIds = Array.from(
-        new Set((participants ?? []).map((row) => row.orderer_user_id as string).filter(Boolean)),
-      )
+      if (participantsError) {
+        console.error('查询点单参与者失败：', participantsError.message)
+      } else {
+        const typedRows = (participants ?? []) as Array<{ orderer_user_id: string | null }>
+        const userIds = Array.from(
+          new Set(typedRows.map((row) => row.orderer_user_id).filter((uid): uid is string => Boolean(uid))),
+        )
 
-      if (userIds.length > 0) {
-        const statusLabel = ORDER_SESSION_STATUS_LABELS[nextStatus as OrderSessionStatus] ?? nextStatus
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        void Promise.all(userIds.map((uid) =>
-          sendNotificationToUser(supabase, {
-            userId: uid,
-            type: 'order_status',
-            title: `👨‍🍳 点单状态更新为「${statusLabel}」`,
-            body: `您参与的一场点单状态发生变化，点击查看详情`,
-            url: `/orders/participated/${id}`,
-          }),
-        ))
+        if (userIds.length > 0) {
+          const statusLabel = ORDER_SESSION_STATUS_LABELS[nextStatus as OrderSessionStatus] ?? nextStatus
+          void Promise.all(userIds.map((uid) =>
+            sendNotificationToUser(supabase, {
+              userId: uid,
+              type: 'order_status',
+              title: `👨‍🍳 点单状态更新为「${statusLabel}」`,
+              body: '您参与的一场点单状态发生变化，点击查看详情',
+              url: `/orders/${id}`,
+            }),
+          )).catch((err) => console.error('点单状态变更通知发送失败：', err))
+        }
       }
     } catch (notifyError) {
       console.error('点单状态变更通知失败：', notifyError)

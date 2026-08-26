@@ -58,7 +58,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '已超过截止时间，这场点单不再收单' }, { status: 400 })
     }
 
-    // 2. 幂等 upsert 点单明细
+    // 2. 幂等 upsert 点单明细；先探测是首次提交还是覆盖修改（PRD §6.2）
+    const { data: existingEntry } = await supabase
+      .from('order_entries')
+      .select('id')
+      .eq('order_session_id', tokenData.order_session_id)
+      .eq('client_key', body.clientKey)
+      .maybeSingle()
+    const isFirstSubmission = !existingEntry
+
     const { error: upsertError } = await supabase
       .from('order_entries')
       .upsert(
@@ -77,32 +85,35 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `提交点单失败：${upsertError.message}` }, { status: 500 })
     }
 
-    // 3. 通知发起人（M2 通知中心：站内 + Web Push）
-    try {
-      const { data: sessionRow } = await supabase
-        .from('order_sessions')
-        .select('host_id, title')
-        .eq('id', tokenData.order_session_id)
-        .single()
+    // 3. 仅首次提交时通知发起人「点单到达」；覆盖修改不再打扰（M2 通知中心）
+    if (isFirstSubmission) {
+      try {
+        const { data: sessionRow, error: sessionRowError } = await supabase
+          .from('order_sessions')
+          .select('host_id, title')
+          .eq('id', tokenData.order_session_id)
+          .single()
 
-      const dishNames = body.items
-        .map((item) => item.freeText || item.recipeId)
-        .filter(Boolean)
-        .join('、')
+        if (sessionRowError) {
+          console.error('查询点单会话（用于通知）失败：', sessionRowError.message)
+        } else {
+          const dishNames = body.items
+            .map((item) => item.freeText || item.recipeId)
+            .filter(Boolean)
+            .join('、')
 
-      const host = sessionRow as { host_id: string; title: string } | null
-      if (host) {
-        void sendNotificationToUser(supabase, {
-          userId: host.host_id,
-          type: 'order_arrived',
-          title: `🍲 ${body.nickname.trim()} 提交了点单`,
-          body: `「${host.title}」新点单动态：${dishNames || '有新的点菜'}`,
-          url: `/orders/${tokenData.order_session_id}`,
-        })
+          void sendNotificationToUser(supabase, {
+            userId: sessionRow.host_id,
+            type: 'order_arrived',
+            title: `🍲 ${body.nickname.trim()} 提交了点单`,
+            body: `「${sessionRow.title}」新点单动态：${dishNames || '有新的点菜'}`,
+            url: `/orders/${tokenData.order_session_id}`,
+          }).catch((err) => console.error('点单到达推送发送失败：', err))
+        }
+      } catch (notifyError) {
+        // 通知发送失败不影响主流程
+        console.error('点单到达通知发送失败：', notifyError)
       }
-    } catch (notifyError) {
-      // 通知发送失败不影响主流程
-      console.error('点单到达通知发送失败：', notifyError)
     }
 
     return NextResponse.json({ ok: true })

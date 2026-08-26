@@ -23,7 +23,18 @@ export async function GET(request: Request) {
     }
 
     const notifications = (data as NotificationRow[]) ?? []
-    const unreadCount = notifications.filter((n) => !n.read_at).length
+
+    // 未读数用独立精确计数（列表 limit(50) 只是切片，直接在切片上统计会封顶失真）
+    const { count: exactUnread, error: countError } = await supabase
+      .from('notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .is('read_at', null)
+
+    if (countError) {
+      console.error('未读通知计数失败：', countError.message)
+    }
+    const unreadCount = exactUnread ?? notifications.filter((n) => !n.read_at).length
 
     return NextResponse.json({ ok: true, unreadCount, notifications })
   } catch (err) {
