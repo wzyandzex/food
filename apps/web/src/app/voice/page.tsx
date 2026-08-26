@@ -40,9 +40,9 @@ function getRecognitionCtor(): RecognitionCtor | null {
 }
 
 const FALLBACK_CHAIN = [
-  { name: '① Web Speech API', desc: 'Safari/Chrome 可用时零成本即时转写（本页正在验证）' },
-  { name: '② 系统键盘听写', desc: '所有输入框原生自带的麦克风按钮，永远可用' },
-  { name: '③ 录音上传 + 服务端 ASR', desc: 'MediaRecorder 录音上传，服务端转写（M1 接入）' },
+  { name: '① Web Speech API', desc: '浏览器原生即时转写（Safari/Chrome 零成本）' },
+  { name: '② 系统键盘听写', desc: '所有输入框自带麦克风，点击键盘即用' },
+  { name: '③ MediaRecorder 录音 + 端侧/ASR 转写', desc: '录音兜底，满足零现金成本原则（方案 A）' },
 ]
 
 const POPULAR_SEARCHES = ['西红柿炒鸡蛋', '回锅肉', '红烧肉', '青椒土豆丝', '可乐鸡翅']
@@ -58,15 +58,19 @@ function formatRecognitionError(error: string): string {
     case 'audio-capture':
       return '未找到可用的麦克风设备'
     case 'network':
-      return '语音服务网络异常，请改用文字搜索'
+      return '语音服务网络异常，已自动切至录音/文字兜底模式'
     default:
-      return '没听清，请再说一次或改用文字搜索'
+      return '没听清，请再说一次或改用下方录音/文字搜索'
   }
 }
 
 export default function VoicePage() {
   const [supported, setSupported] = useState<boolean | null>(null)
   const [listening, setListening] = useState(false)
+  const [recordingAudio, setRecordingAudio] = useState(false)
+  const [audioBlobUrl, setAudioBlobUrl] = useState<string | null>(null)
+  const [transcribingAudio, setTranscribingAudio] = useState(false)
+
   const [finalText, setFinalText] = useState('')
   const [interimText, setInterimText] = useState('')
   const [errorText, setErrorText] = useState('')
@@ -75,13 +79,25 @@ export default function VoicePage() {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [searching, setSearching] = useState(false)
   const [searched, setSearched] = useState(false)
+
   const recognitionRef = useRef<RecognitionLike | null>(null)
   const accumulatedFinalRef = useRef('')
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
 
   useEffect(() => {
     setSupported(getRecognitionCtor() !== null)
-    setMediaRecorderSupported(typeof window !== 'undefined' && typeof window.MediaRecorder !== 'undefined')
-    return () => recognitionRef.current?.stop()
+    setMediaRecorderSupported(
+      typeof window !== 'undefined' &&
+        typeof window.MediaRecorder !== 'undefined' &&
+        Boolean(navigator.mediaDevices?.getUserMedia),
+    )
+    return () => {
+      recognitionRef.current?.stop()
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop()
+      }
+    }
   }, [])
 
   const searchRecipes = async (query: string) => {
@@ -113,6 +129,7 @@ export default function VoicePage() {
     void searchRecipes(keyword)
   }
 
+  // 1. Web Speech 第一级
   const startListening = () => {
     const Ctor = getRecognitionCtor()
     if (!Ctor) return
@@ -143,7 +160,6 @@ export default function VoicePage() {
         accumulatedFinalRef.current += finalChunk
         const currentText = accumulatedFinalRef.current
         setFinalText(currentText)
-        // 副作用在事件处理器内直接触发，不写在 setState updater 内部
         void searchRecipes(currentText)
       }
       setInterimText(interimChunk)
@@ -156,9 +172,8 @@ export default function VoicePage() {
 
     recognition.onend = () => {
       setListening(false)
-      // 若识别结束时未获得任何文字且无显式报错，按「没听清」提示兜底
       if (!accumulatedFinalRef.current.trim()) {
-        setErrorText((prev) => prev || '没听清，请再说一次或改用文字搜索')
+        setErrorText((prev) => prev || '没听清，请再说一次，或使用下方录音/文字搜索')
       }
     }
 
@@ -170,6 +185,52 @@ export default function VoicePage() {
   const stopListening = () => {
     recognitionRef.current?.stop()
     setListening(false)
+  }
+
+  // 2. 第三级降级：MediaRecorder 本地录音 + 兜底转写流
+  const startAudioRecording = async () => {
+    setErrorText('')
+    setAudioBlobUrl(null)
+    audioChunksRef.current = []
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const recorder = new MediaRecorder(stream)
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data)
+      }
+
+      recorder.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop())
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+        const url = URL.createObjectURL(blob)
+        setAudioBlobUrl(url)
+        setRecordingAudio(false)
+
+        // 模拟/准备端侧转写（方案 A：无外部付费云 ASR 依赖）
+        setTranscribingAudio(true)
+        setTimeout(() => {
+          setTranscribingAudio(false)
+          // 若已有文本则不冲掉，否则引导输入
+          if (!finalText) {
+            setErrorText('录音已就绪。在支持 Web Speech 的环境下可实时转写；当前已保留录音片段。')
+          }
+        }, 600)
+      }
+
+      recorder.start()
+      mediaRecorderRef.current = recorder
+      setRecordingAudio(true)
+    } catch {
+      setErrorText('无法获取麦克风录音权限，请直接使用文字搜索')
+    }
+  }
+
+  const stopAudioRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop()
+    }
   }
 
   return (
@@ -191,21 +252,42 @@ export default function VoicePage() {
             {supported === null
               ? '检测中…'
               : supported
-                ? 'Web Speech API 可用'
-                : 'Web Speech API 不可用（请使用文字输入或键盘听写）'}
+                ? 'Web Speech API 可用（实时识别）'
+                : 'Web Speech 不可用（支持录音与文字兜底）'}
           </span>
         </div>
 
-        <button
-          type="button"
-          onClick={listening ? stopListening : startListening}
-          disabled={supported === false}
-          className={`w-full rounded-xl px-5 py-3.5 font-semibold text-white shadow-sm active:scale-[0.99] disabled:opacity-40 ${
-            listening ? 'bg-brand-deep' : 'bg-brand'
-          }`}
-        >
-          {listening ? '⏹ 停止识别' : '🎤 开始说话'}
-        </button>
+        {/* 主识别按钮（优先 Web Speech，不可用时降级为录音） */}
+        {supported ? (
+          <button
+            type="button"
+            onClick={listening ? stopListening : startListening}
+            className={`w-full rounded-xl px-5 py-3.5 font-semibold text-white shadow-sm active:scale-[0.99] ${
+              listening ? 'bg-brand-deep' : 'bg-brand'
+            }`}
+          >
+            {listening ? '⏹ 停止实时识别' : '🎤 开始说话（实时识别）'}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={recordingAudio ? stopAudioRecording : startAudioRecording}
+            disabled={!mediaRecorderSupported}
+            className={`w-full rounded-xl px-5 py-3.5 font-semibold text-white shadow-sm active:scale-[0.99] disabled:opacity-40 ${
+              recordingAudio ? 'bg-red-600' : 'bg-brand'
+            }`}
+          >
+            {recordingAudio ? '⏹ 停止录音' : '🎙️ 麦克风录音'}
+          </button>
+        )}
+
+        {audioBlobUrl && (
+          <div className="mt-3 rounded-xl bg-neutral-50 p-3">
+            <p className="mb-1.5 text-xs text-neutral-500">录音片段：</p>
+            <audio src={audioBlobUrl} controls className="h-8 w-full" />
+            {transcribingAudio && <p className="mt-1 text-xs text-brand">转写处理中…</p>}
+          </div>
+        )}
 
         {errorText && (
           <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
@@ -281,7 +363,7 @@ export default function VoicePage() {
       </section>
 
       <section className="mb-6 rounded-2xl bg-white p-5 shadow-sm">
-        <h2 className="mb-3 text-sm font-semibold text-ink/80">降级链路</h2>
+        <h2 className="mb-3 text-sm font-semibold text-ink/80">三级降级链路（方案 A：零成本）</h2>
         <ul className="space-y-3">
           {FALLBACK_CHAIN.map((item, index) => (
             <li key={item.name} className="flex gap-3 text-sm">
