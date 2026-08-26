@@ -42,21 +42,38 @@ export default function HomePage() {
       </section>
 
       <section className="mb-8 space-y-3">
-        {MODULES.map((module) => (
-          <Link
-            key={module.title}
-            href={module.title === '菜谱市场' ? '/recipes' : '#'}
-            className={`block rounded-2xl bg-white p-5 shadow-sm ${module.title === '菜谱市场' ? 'active:scale-[0.99]' : ''}`}
-          >
-            <div className="mb-1 flex items-center justify-between">
-              <h2 className="font-semibold">{module.title}</h2>
-              <span className="rounded-full bg-brand-soft px-2 py-0.5 text-xs font-medium text-brand-deep">
-                {module.title === '菜谱市场' ? '已上线' : `${module.status} 待建`}
-              </span>
+        {MODULES.map((module) => {
+          const isAvailable = module.title === '菜谱市场'
+          const CardContent = (
+            <div
+              className={`block rounded-2xl bg-white p-5 shadow-sm ${
+                isAvailable ? 'active:scale-[0.99]' : 'cursor-default opacity-80'
+              }`}
+            >
+              <div className="mb-1 flex items-center justify-between">
+                <h2 className="font-semibold">{module.title}</h2>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                    isAvailable
+                      ? 'bg-brand-soft text-brand-deep'
+                      : 'bg-neutral-100 text-neutral-500'
+                  }`}
+                >
+                  {isAvailable ? '已上线' : `${module.status} 即将上线`}
+                </span>
+              </div>
+              <p className="text-sm text-ink/60">{module.desc}</p>
             </div>
-            <p className="text-sm text-ink/60">{module.desc}</p>
-          </Link>
-        ))}
+          )
+
+          return isAvailable ? (
+            <Link key={module.title} href="/recipes">
+              {CardContent}
+            </Link>
+          ) : (
+            <div key={module.title}>{CardContent}</div>
+          )
+        })}
       </section>
 
       <Link
