@@ -310,7 +310,12 @@ export default function OrderSummaryPage() {
                     {savingList ? '保存中…' : '🛒 一键存为购物清单'}
                   </button>
                   {listSavedMsg && (
-                    <p className="text-xs text-green-700">{listSavedMsg}</p>
+                    <div className="flex items-center justify-between rounded-xl bg-green-50 px-3 py-2 text-xs text-green-800">
+                      <span>{listSavedMsg}</span>
+                      <Link href="/shopping-list" className="underline font-semibold">
+                        去查看清单 →
+                      </Link>
+                    </div>
                   )}
                 </div>
               </>

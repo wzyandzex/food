@@ -81,6 +81,19 @@ export default function HomePage() {
           </div>
           <p className="text-xs text-ink/60">分享专属链接给家人朋友，免登录点菜，自动生成缺失食材清单</p>
         </Link>
+
+        <Link
+          href="/shopping-list"
+          className="block rounded-2xl bg-white p-4 shadow-sm active:scale-[0.99]"
+        >
+          <div className="mb-1 flex items-center justify-between">
+            <h2 className="font-semibold text-sm">🛒 购物清单</h2>
+            <span className="rounded-full bg-brand-soft px-2 py-0.5 text-xs font-medium text-brand-deep">
+              买菜备料
+            </span>
+          </div>
+          <p className="text-xs text-ink/60">一键汇总点单与菜谱缺失食材，买菜即时勾选已备齐</p>
+        </Link>
       </section>
 
       <Link

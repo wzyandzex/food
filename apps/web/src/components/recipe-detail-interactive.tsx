@@ -1,17 +1,23 @@
 'use client'
 
+import Link from 'next/link'
 import { useState } from 'react'
 import type { RecipeV1 } from '@kaifan/shared'
+import { useAuth } from '@/components/auth-provider'
 
 interface RecipeDetailInteractiveProps {
   recipe: RecipeV1
 }
 
 export function RecipeDetailInteractive({ recipe }: RecipeDetailInteractiveProps) {
+  const { user, getAccessToken } = useAuth()
   // 本地交互态：食材勾选「家里有」
   const [haveIngredients, setHaveIngredients] = useState<Record<number, boolean>>({})
   // 本地交互态：步骤完成进度
   const [doneSteps, setDoneSteps] = useState<Record<number, boolean>>({})
+  const [addingToShoppingList, setAddingToShoppingList] = useState(false)
+  const [addedSuccess, setAddedSuccess] = useState(false)
+  const [addError, setAddError] = useState('')
 
   const toggleIngredient = (index: number) => {
     setHaveIngredients((prev) => ({ ...prev, [index]: !prev[index] }))
@@ -19,6 +25,56 @@ export function RecipeDetailInteractive({ recipe }: RecipeDetailInteractiveProps
 
   const toggleStep = (index: number) => {
     setDoneSteps((prev) => ({ ...prev, [index]: !prev[index] }))
+  }
+
+  // 一键将「家里没有」的食材加入购物清单
+  const handleAddToShoppingList = async () => {
+    if (!user) {
+      setAddError('请先登录后再加入购物清单')
+      return
+    }
+
+    const missingIngredients = recipe.ingredients.filter((_, idx) => !haveIngredients[idx])
+    if (missingIngredients.length === 0) {
+      setAddError('所有食材都已标记为「家里有」啦！')
+      return
+    }
+
+    setAddingToShoppingList(true)
+    setAddError('')
+    try {
+      const token = await getAccessToken()
+      if (!token) throw new Error('未获取到有效登录令牌')
+
+      const res = await fetch('/api/shopping-lists', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          items: missingIngredients.map((ing) => ({
+            name: ing.name,
+            qty: ing.qty ?? null,
+            unit: ing.unit ?? '',
+            checked: false,
+            sourceRecipeTitle: recipe.title,
+          })),
+        }),
+      })
+
+      const data = (await res.json()) as { ok?: boolean; error?: string }
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || '加入购物清单失败')
+      }
+
+      setAddedSuccess(true)
+      setTimeout(() => setAddedSuccess(false), 3500)
+    } catch (err) {
+      setAddError((err as Error).message)
+    } finally {
+      setAddingToShoppingList(false)
+    }
   }
 
   const completedStepsCount = Object.values(doneSteps).filter(Boolean).length
@@ -66,6 +122,28 @@ export function RecipeDetailInteractive({ recipe }: RecipeDetailInteractiveProps
             )
           })}
         </ul>
+
+        {/* 存入购物清单按钮 */}
+        <div className="mt-4 pt-3 border-t border-neutral-100 flex flex-col gap-2">
+          {addError && <p className="text-xs text-red-500">{addError}</p>}
+          {addedSuccess ? (
+            <div className="flex items-center justify-between rounded-xl bg-green-50 px-3 py-2 text-xs text-green-800">
+              <span>✓ 已将未备齐食材加入购物清单！</span>
+              <Link href="/shopping-list" className="underline font-semibold">
+                去查看 →
+              </Link>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleAddToShoppingList}
+              disabled={addingToShoppingList}
+              className="w-full rounded-xl bg-brand-soft py-2 text-center text-xs font-semibold text-brand-deep active:scale-98 disabled:opacity-50"
+            >
+              {addingToShoppingList ? '正在添加…' : '🛒 将未有食材一键加入购物清单'}
+            </button>
+          )}
+        </div>
       </section>
 
       {/* 分步骤做法（支持勾选进度） */}

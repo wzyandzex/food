@@ -37,3 +37,23 @@ export const RECIPE_SOURCE_TYPES = [
   'user',
 ] as const
 export type RecipeSourceType = (typeof RECIPE_SOURCE_TYPES)[number]
+
+/** 购物清单中的单项 */
+export interface ShoppingListItem {
+  id: string
+  name: string
+  qty?: number | null
+  unit?: string | null
+  checked: boolean
+  sourceRecipeTitle?: string
+}
+
+/** 购物清单完整模型 */
+export interface ShoppingListRecord {
+  id: string
+  ownerId: string
+  sourceOrderSessionId?: string | null
+  items: ShoppingListItem[]
+  createdAt: string
+  updatedAt: string
+}
