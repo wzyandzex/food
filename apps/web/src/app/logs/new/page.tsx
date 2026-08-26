@@ -2,15 +2,29 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { MEAL_TYPE_LABELS, type MealType } from '@kaifan/shared'
 
 import { useAuth } from '@/components/auth-provider'
+import { getBrowserClient } from '@/lib/supabase'
 
 interface DishDraft {
   title: string
   photos: string[]
   adjustNote: string
+  // 关联的市场菜谱（引用而非复制，PRD §4.3）；自由填写的菜名为空
+  recipeId?: string
+}
+
+interface RecipeOption {
+  id: string
+  title: string
+}
+
+interface OrderSessionOption {
+  id: string
+  title: string
+  status: string
 }
 
 export default function NewCookLogPage() {
@@ -27,6 +41,36 @@ export default function NewCookLogPage() {
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  // 关联市场菜谱（仅真实库数据；样例模式 id 非法不提供）
+  const [recipeOptions, setRecipeOptions] = useState<RecipeOption[]>([])
+  // 关联点单会话（PRD §4.4：做饭自动关联该点单）
+  const [orderSessions, setOrderSessions] = useState<OrderSessionOption[]>([])
+  const [orderSessionId, setOrderSessionId] = useState('')
+
+  useEffect(() => {
+    if (!user) return
+
+    // 真实菜谱选项（source=sample 时 id 是菜名，不能作为关联引用）
+    void fetch('/api/recipes/search')
+      .then((res) => res.json())
+      .then((data: { recipes?: RecipeOption[]; source?: string }) => {
+        if (data.source === 'db') setRecipeOptions(data.recipes ?? [])
+      })
+      .catch(() => {})
+
+    // 我发起的点单会话（走 RLS，只列自己的）
+    try {
+      void getBrowserClient()
+        .from('order_sessions')
+        .select('id, title, status')
+        .in('status', ['open', 'closed', 'cooking'])
+        .order('created_at', { ascending: false })
+        .limit(20)
+        .then(({ data }) => setOrderSessions((data as OrderSessionOption[]) ?? []))
+    } catch {
+      // 未配置 Supabase：保持空列表
+    }
+  }, [user])
 
   const handleAddDish = () => {
     setDishes([...dishes, { title: '', photos: [], adjustNote: '' }])
@@ -99,8 +143,10 @@ export default function NewCookLogPage() {
           mealType,
           rating: overallRating,
           note: overallNote,
+          orderSessionId: orderSessionId || undefined,
           dishes: validDishes.map((d) => ({
             snapshotTitle: d.title.trim(),
+            recipeId: d.recipeId,
             photos: d.photos,
             adjustNote: d.adjustNote.trim(),
           })),
@@ -204,6 +250,26 @@ export default function NewCookLogPage() {
               className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm"
             />
           </div>
+
+          {orderSessions.length > 0 && (
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-ink/60">
+                这顿来自哪个点单？（选填）
+              </label>
+              <select
+                value={orderSessionId}
+                onChange={(e) => setOrderSessionId(e.target.value)}
+                className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm bg-white"
+              >
+                <option value="">不关联</option>
+                {orderSessions.map((session) => (
+                  <option key={session.id} value={session.id}>
+                    {session.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </section>
 
         {/* 菜品列表 */}
@@ -233,6 +299,32 @@ export default function NewCookLogPage() {
                   </button>
                 )}
               </div>
+
+              {recipeOptions.length > 0 && (
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-ink/50">
+                    关联市场菜谱（选填）
+                  </label>
+                  <select
+                    value={dish.recipeId ?? ''}
+                    onChange={(e) => {
+                      const selected = recipeOptions.find((r) => r.id === e.target.value)
+                      updateDish(index, {
+                        recipeId: selected?.id,
+                        title: selected ? selected.title : dish.title,
+                      })
+                    }}
+                    className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-xs bg-white"
+                  >
+                    <option value="">不关联（自由记录）</option>
+                    {recipeOptions.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div>
                 <input
