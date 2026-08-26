@@ -1,6 +1,16 @@
--- 开饭 KaiFan · M2 Web Push 订阅存储表
+-- 开饭 KaiFan · M2 Web Push 订阅存储表 + 站内通知结构补全
 -- 在 Supabase SQL Editor 执行
 
+-- 1. notifications 表补充可读字段（0001 中仅有 type/payload）
+alter table public.notifications
+  add column if not exists title text not null default '开饭消息',
+  add column if not exists body text not null default '',
+  add column if not exists url text;
+
+create index if not exists notifications_user_recent_idx
+  on public.notifications (user_id, created_at desc);
+
+-- 2. Push 订阅表
 create table if not exists public.push_subscriptions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles (id) on delete cascade,
