@@ -32,6 +32,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: '截止时间必须晚于当前时间' }, { status: 400 })
   }
 
+  // 候选菜谱必须是合法 UUID（拦截样例菜名等假 id 写入 uuid 列）
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const candidateRecipeIds = (body.candidateRecipeIds ?? []).filter(
+    (id): id is string => typeof id === 'string' && UUID_RE.test(id),
+  )
+
   try {
     const supabase = createServerClient()
 
@@ -44,7 +50,7 @@ export async function POST(request: Request) {
         deadline: body.deadline,
         allow_free_input: body.allowFreeInput ?? false,
         per_person_limit: body.perPersonLimit ?? 3,
-        candidate_recipe_ids: body.candidateRecipeIds ?? [],
+        candidate_recipe_ids: candidateRecipeIds,
         status: 'open',
       })
       .select('id')

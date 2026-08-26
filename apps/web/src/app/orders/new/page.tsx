@@ -26,12 +26,16 @@ export default function NewOrderPage() {
   const [submitting, setSubmitting] = useState(false)
   const [createdToken, setCreatedToken] = useState<string | null>(null)
   const [error, setError] = useState('')
+  // true = 菜谱来自本地样例（未配置数据库），其 id 是菜名而非 UUID，不得提交入库
+  const [usingSampleRecipes, setUsingSampleRecipes] = useState(false)
 
   useEffect(() => {
-    // 载入可选菜谱（先查接口，降级到 SAMPLE）
-    fetch('/api/recipes/search?q=')
+    // 载入可选菜谱：source=sample 表示服务端数据源未配置，仅作界面演示
+    fetch('/api/recipes/search')
       .then((res) => res.json())
-      .then((data: { recipes?: RecipeOption[] }) => {
+      .then((data: { recipes?: RecipeOption[]; source?: string }) => {
+        const isSample = data.source === 'sample'
+        setUsingSampleRecipes(isSample)
         if (data.recipes && data.recipes.length > 0) {
           setAvailableRecipes(data.recipes)
           setSelectedRecipeIds(data.recipes.map((r) => r.id))
@@ -47,14 +51,7 @@ export default function NewOrderPage() {
         }
       })
       .catch(() => {
-        const fallback = SAMPLE_RECIPES.map((r: RecipeV1) => ({
-          id: r.title,
-          title: r.title,
-          minutes: r.minutes,
-          difficulty: r.difficulty,
-        }))
-        setAvailableRecipes(fallback)
-        setSelectedRecipeIds(fallback.map((r) => r.id))
+        setUsingSampleRecipes(true)
       })
   }, [])
 
@@ -89,7 +86,8 @@ export default function NewOrderPage() {
           deadline: deadlineIso,
           perPersonLimit,
           allowFreeInput,
-          candidateRecipeIds: selectedRecipeIds,
+          // 样例菜谱的 id 是菜名不是 UUID：演示模式下不上传候选，避免写库必报错
+          candidateRecipeIds: usingSampleRecipes ? [] : selectedRecipeIds,
         }),
       })
 
@@ -184,6 +182,13 @@ export default function NewOrderPage() {
       </header>
 
       <form onSubmit={handleSubmit} className="space-y-5">
+        {/* 演示模式提示：未配置数据库时菜谱来自本地样例 */}
+        {usingSampleRecipes && (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
+            演示模式：尚未配置菜谱数据库，下方为内置样例菜单（不会写入点单候选）。配置 Supabase 后将自动加载真实菜谱。
+          </p>
+        )}
+
         {/* 设置信息 */}
         <section className="rounded-2xl bg-white p-5 shadow-sm space-y-3">
           <div>
