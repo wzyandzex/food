@@ -1,0 +1,21 @@
+name: deadline-reminders
+
+# 截单提醒定时调度（PRD §4.6：点单到达 / 截单提醒 / 状态变化）
+# 选 GitHub Actions 而非 Vercel Cron：零成本且不受 Hobby 计划每日一次的粒度限制
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger deadline reminder endpoint
+        env:
+          APP_URL: ${{ vars.KAIFAN_APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl -fsS --max-time 30 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${APP_URL}/api/cron/deadline-reminders"
