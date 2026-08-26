@@ -24,7 +24,10 @@ export default function OrderForm({
 }: OrderFormProps) {
   const [nickname, setNickname] = useState('')
   const [selectedIds, setSelectedIds] = useState<string[]>([])
+  // 每道已选菜的份数（1-9），默认 1
+  const [servingsById, setServingsById] = useState<Record<string, number>>({})
   const [freeTextDish, setFreeTextDish] = useState('')
+  const [freeTextServings, setFreeTextServings] = useState(1)
   const [note, setNote] = useState('')
   const [clientKey, setClientKey] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -47,14 +50,57 @@ export default function OrderForm({
   const toggleSelect = (id: string) => {
     if (selectedIds.includes(id)) {
       setSelectedIds(selectedIds.filter((item) => item !== id))
+      setServingsById((prev) => {
+        const next = { ...prev }
+        delete next[id]
+        return next
+      })
     } else {
       if (selectedIds.length >= perPersonLimit) {
         alert(`每人最多点 ${perPersonLimit} 道菜`)
         return
       }
       setSelectedIds([...selectedIds, id])
+      setServingsById((prev) => ({ ...prev, [id]: 1 }))
     }
   }
+
+  const changeServings = (id: string, delta: number) => {
+    setServingsById((prev) => {
+      const value = (prev[id] ?? 1) + delta
+      return { ...prev, [id]: Math.min(9, Math.max(1, value)) }
+    })
+  }
+
+  const ServingsStepper = ({ id }: { id: string }) => (
+    <div className="flex items-center gap-1.5">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          changeServings(id, -1)
+        }}
+        className="size-6 rounded-full border border-neutral-300 bg-white text-xs font-bold text-ink/70 active:bg-neutral-100"
+        aria-label="减少份数"
+      >
+        −
+      </button>
+      <span className="w-4 text-center text-xs font-semibold text-brand-deep">
+        ×{servingsById[id] ?? 1}
+      </span>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          changeServings(id, 1)
+        }}
+        className="size-6 rounded-full border border-neutral-300 bg-white text-xs font-bold text-ink/70 active:bg-neutral-100"
+        aria-label="增加份数"
+      >
+        ＋
+      </button>
+    </div>
+  )
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -66,13 +112,13 @@ export default function OrderForm({
     const items: Array<{ recipeId?: string; freeText?: string; servings: number; note?: string }> =
       selectedIds.map((id) => ({
         recipeId: id,
-        servings: 1,
+        servings: servingsById[id] ?? 1,
       }))
 
     if (freeTextDish.trim()) {
       items.push({
         freeText: freeTextDish.trim(),
-        servings: 1,
+        servings: freeTextServings,
       })
     }
 
@@ -170,14 +216,17 @@ export default function OrderForm({
                   <p className="text-sm font-semibold text-ink">{r.title}</p>
                   <p className="text-xs text-ink/50 mt-0.5">⏱ {r.minutes} 分钟 · 难度 {'⭐'.repeat(r.difficulty)}</p>
                 </div>
-                <div
-                  className={`size-5 rounded-full border flex items-center justify-center text-xs font-bold ${
-                    isChecked
-                      ? 'border-brand bg-brand text-white'
-                      : 'border-neutral-300 bg-white'
-                  }`}
-                >
-                  {isChecked ? '✓' : ''}
+                <div className="flex items-center gap-2">
+                  {isChecked && <ServingsStepper id={r.id} />}
+                  <div
+                    className={`size-5 rounded-full border flex items-center justify-center text-xs font-bold ${
+                      isChecked
+                        ? 'border-brand bg-brand text-white'
+                        : 'border-neutral-300 bg-white'
+                    }`}
+                  >
+                    {isChecked ? '✓' : ''}
+                  </div>
                 </div>
               </div>
             )
@@ -189,13 +238,36 @@ export default function OrderForm({
             <label className="block text-xs font-semibold text-ink/60 mb-1">
               想吃库里没有的？自由报菜名：
             </label>
-            <input
-              type="text"
-              value={freeTextDish}
-              onChange={(e) => setFreeTextDish(e.target.value)}
-              placeholder="如：可乐鸡翅、清蒸鲈鱼"
-              className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-xs"
-            />
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={freeTextDish}
+                onChange={(e) => setFreeTextDish(e.target.value)}
+                placeholder="如：可乐鸡翅、清蒸鲈鱼"
+                className="flex-1 rounded-lg border border-neutral-200 px-3 py-2 text-xs"
+              />
+              <div className="flex shrink-0 items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setFreeTextServings((v) => Math.max(1, v - 1))}
+                  className="size-6 rounded-full border border-neutral-300 bg-white text-xs font-bold text-ink/70"
+                  aria-label="减少份数"
+                >
+                  −
+                </button>
+                <span className="w-4 text-center text-xs font-semibold text-brand-deep">
+                  ×{freeTextServings}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setFreeTextServings((v) => Math.min(9, v + 1))}
+                  className="size-6 rounded-full border border-neutral-300 bg-white text-xs font-bold text-ink/70"
+                  aria-label="增加份数"
+                >
+                  ＋
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </section>

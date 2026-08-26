@@ -4,6 +4,7 @@ import { createServerClient, getAuthUserId } from '@/lib/supabase'
 interface OrderItemLike {
   recipeId?: string
   freeText?: string
+  servings?: number
   note?: string
 }
 

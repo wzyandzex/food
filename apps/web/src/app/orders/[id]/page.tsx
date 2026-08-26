@@ -9,6 +9,7 @@ import { useAuth } from '@/components/auth-provider'
 interface OrderItemLike {
   recipeId?: string
   freeText?: string
+  servings?: number
   note?: string
 }
 
@@ -123,7 +124,10 @@ export default function OrderSummaryPage() {
                     <div className="text-xs text-ink/70 mt-1 pl-2 space-y-0.5">
                       {entry.items.map((it, itIdx) => (
                         <div key={itIdx}>
-                          🍽️ {it.freeText || it.recipeId}{' '}
+                          🍽️ {it.freeText || it.recipeId}
+                          {(it.servings ?? 1) > 1 && (
+                            <span className="font-semibold text-brand-deep"> ×{it.servings}</span>
+                          )}{' '}
                           {it.note && <span className="text-brand-deep">（{it.note}）</span>}
                         </div>
                       ))}
