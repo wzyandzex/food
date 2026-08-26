@@ -12,6 +12,22 @@ interface RawIncomingItem {
   sourceRecipeTitle?: string
 }
 
+/** 安全解析数据库中存储的 items jsonb 数组为强类型的 ShoppingListItem[] */
+function parseDbItems(raw: unknown): ShoppingListItem[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+    .map((item) => ({
+      id: typeof item.id === 'string' && item.id.trim() ? item.id.trim() : randomUUID(),
+      name: typeof item.name === 'string' ? item.name.trim() : '',
+      qty: typeof item.qty === 'number' && !Number.isNaN(item.qty) && item.qty > 0 ? item.qty : null,
+      unit: typeof item.unit === 'string' ? item.unit.trim() : '',
+      checked: Boolean(item.checked),
+      sourceRecipeTitle: typeof item.sourceRecipeTitle === 'string' ? item.sourceRecipeTitle.trim() : undefined,
+    }))
+    .filter((item) => item.name.length > 0)
+}
+
 /** 获取用户的当前/最新活跃购物清单 */
 export async function GET(request: Request) {
   const userId = await getAuthUserId(request)
@@ -30,6 +46,7 @@ export async function GET(request: Request) {
       .maybeSingle()
 
     if (error) {
+      console.error('获取购物清单失败：', error.message)
       return NextResponse.json({ error: `获取购物清单失败：${error.message}` }, { status: 500 })
     }
 
@@ -37,17 +54,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ list: null, items: [] })
     }
 
-    // 格式化补全 id
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rawItems = (data.items as any[]) || []
-    const items: ShoppingListItem[] = rawItems.map((item) => ({
-      id: item.id || randomUUID(),
-      name: item.name || '',
-      qty: typeof item.qty === 'number' ? item.qty : null,
-      unit: typeof item.unit === 'string' ? item.unit : '',
-      checked: Boolean(item.checked),
-      sourceRecipeTitle: item.sourceRecipeTitle || undefined,
-    }))
+    const items = parseDbItems(data.items)
 
     return NextResponse.json({
       list: {
@@ -85,7 +92,7 @@ export async function POST(request: Request) {
   const newItems: ShoppingListItem[] = body.items
     .filter((item) => typeof item?.name === 'string' && item.name.trim())
     .map((item) => ({
-      id: item.id || randomUUID(),
+      id: typeof item.id === 'string' && item.id.trim() ? item.id.trim() : randomUUID(),
       name: item.name.trim(),
       qty: typeof item.qty === 'number' && item.qty > 0 ? item.qty : null,
       unit: typeof item.unit === 'string' ? item.unit.trim() : '',
@@ -109,9 +116,8 @@ export async function POST(request: Request) {
       .maybeSingle()
 
     if (currentList && body?.mode !== 'replace') {
-      // 智能合并同名食材
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const existingItems: ShoppingListItem[] = (currentList.items as any[]) || []
+      // 智能合并同名食材（同名且同单位则合并累加；保留已有已备齐状态，避免打乱备料计划）
+      const existingItems = parseDbItems(currentList.items)
       const mergedMap = new Map<string, ShoppingListItem>()
 
       for (const item of existingItems) {
@@ -127,8 +133,10 @@ export async function POST(request: Request) {
           } else if (typeof item.qty === 'number') {
             exist.qty = item.qty
           }
-          // 如果新加进来的未买，重置勾选
-          if (!item.checked) exist.checked = false
+          // 保留已有的已备齐状态：若之前已买齐，新加进来不强制重置为未买
+          if (!exist.checked && item.checked) {
+            exist.checked = true
+          }
         } else {
           mergedMap.set(key, item)
         }
@@ -150,7 +158,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, listId: currentList.id, items: finalItems })
     }
 
-    // 新建清单
+    // 新建清单或直接 replace
     const { data: created, error: insertError } = await supabase
       .from('shopping_lists')
       .insert({

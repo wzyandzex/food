@@ -27,13 +27,8 @@ export function RecipeDetailInteractive({ recipe }: RecipeDetailInteractiveProps
     setDoneSteps((prev) => ({ ...prev, [index]: !prev[index] }))
   }
 
-  // 一键将「家里没有」的食材加入购物清单
+  // 一键将「家里没有」的食材加入购物清单（支持游客 LocalStorage 暂存）
   const handleAddToShoppingList = async () => {
-    if (!user) {
-      setAddError('请先登录后再加入购物清单')
-      return
-    }
-
     const missingIngredients = recipe.ingredients.filter((_, idx) => !haveIngredients[idx])
     if (missingIngredients.length === 0) {
       setAddError('所有食材都已标记为「家里有」啦！')
@@ -42,7 +37,50 @@ export function RecipeDetailInteractive({ recipe }: RecipeDetailInteractiveProps
 
     setAddingToShoppingList(true)
     setAddError('')
+
+    const itemsToAppend = missingIngredients.map((ing) => ({
+      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `item_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      name: ing.name,
+      qty: ing.qty ?? null,
+      unit: ing.unit ?? '',
+      checked: false,
+      sourceRecipeTitle: recipe.title,
+    }))
+
     try {
+      // 1. 游客模式：直接合并存入 LocalStorage
+      if (!user) {
+        const raw = localStorage.getItem('kaifan_guest_shopping_list')
+        const currentList: typeof itemsToAppend = raw ? JSON.parse(raw) : []
+        const mergedMap = new Map<string, (typeof itemsToAppend)[0]>()
+
+        for (const item of currentList) {
+          mergedMap.set(`${item.name}__${item.unit || ''}`, { ...item })
+        }
+        for (const item of itemsToAppend) {
+          const key = `${item.name}__${item.unit || ''}`
+          const exist = mergedMap.get(key)
+          if (exist) {
+            if (typeof exist.qty === 'number' && typeof item.qty === 'number') {
+              exist.qty += item.qty
+            } else if (typeof item.qty === 'number') {
+              exist.qty = item.qty
+            }
+          } else {
+            mergedMap.set(key, item)
+          }
+        }
+
+        localStorage.setItem(
+          'kaifan_guest_shopping_list',
+          JSON.stringify(Array.from(mergedMap.values())),
+        )
+        setAddedSuccess(true)
+        setTimeout(() => setAddedSuccess(false), 3500)
+        return
+      }
+
+      // 2. 登录模式：调用服务端 API
       const token = await getAccessToken()
       if (!token) throw new Error('未获取到有效登录令牌')
 
@@ -53,13 +91,7 @@ export function RecipeDetailInteractive({ recipe }: RecipeDetailInteractiveProps
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          items: missingIngredients.map((ing) => ({
-            name: ing.name,
-            qty: ing.qty ?? null,
-            unit: ing.unit ?? '',
-            checked: false,
-            sourceRecipeTitle: recipe.title,
-          })),
+          items: itemsToAppend,
         }),
       })
 

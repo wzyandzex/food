@@ -1,17 +1,21 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { ShoppingListItem } from '@kaifan/shared'
+
+const GUEST_STORAGE_KEY = 'kaifan_guest_shopping_list'
 
 interface ShoppingListViewProps {
   initialListId: string | null
   initialItems: ShoppingListItem[]
+  isGuest?: boolean
   getAccessToken: () => Promise<string | null>
 }
 
 export function ShoppingListView({
   initialListId,
   initialItems,
+  isGuest = false,
   getAccessToken,
 }: ShoppingListViewProps) {
   const [listId, setListId] = useState<string | null>(initialListId)
@@ -24,27 +28,53 @@ export function ShoppingListView({
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
 
+  // 竞态队列锁：确保高频连续点击时，最新的 items 始终能够排队串行落盘
+  const latestItemsRef = useRef(items)
+  latestItemsRef.current = items
+  const isPersistingRef = useRef(false)
+  const pendingPersistRef = useRef(false)
+
   const pendingItems = items.filter((item) => !item.checked)
   const checkedItems = items.filter((item) => item.checked)
   const totalCount = items.length
   const progress = totalCount > 0 ? Math.round((checkedItems.length / totalCount) * 100) : 0
 
-  // 统一持久化更新
-  const persistItems = async (updatedItems: ShoppingListItem[], targetListId = listId) => {
+  // 统一持久化更新（支持游客 LocalStorage 与登录端 API 串行落盘）
+  const persistItems = async (updatedItems: ShoppingListItem[]) => {
+    // 1. 游客模式：直接同步 LocalStorage
+    if (isGuest) {
+      try {
+        localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(updatedItems))
+      } catch (err) {
+        console.error('保存本地离线清单失败：', err)
+      }
+      return
+    }
+
+    // 2. 登录模式：排队机制防止并发写入产生状态覆盖
+    if (isPersistingRef.current) {
+      pendingPersistRef.current = true
+      return
+    }
+
+    isPersistingRef.current = true
     setSyncing(true)
     setError('')
+
     try {
       const token = await getAccessToken()
       if (!token) return
 
-      if (targetListId) {
-        const res = await fetch(`/api/shopping-lists/${targetListId}`, {
+      const itemsToSend = latestItemsRef.current
+
+      if (listId) {
+        const res = await fetch(`/api/shopping-lists/${listId}`, {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ items: updatedItems }),
+          body: JSON.stringify({ items: itemsToSend }),
         })
         if (!res.ok) {
           const body = (await res.json()) as { error?: string }
@@ -58,7 +88,7 @@ export function ShoppingListView({
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ items: updatedItems, mode: 'replace' }),
+          body: JSON.stringify({ items: itemsToSend, mode: 'replace' }),
         })
         const body = (await res.json()) as { listId?: string; error?: string }
         if (!res.ok || !body.listId) {
@@ -69,7 +99,13 @@ export function ShoppingListView({
     } catch (err) {
       setError((err as Error).message)
     } finally {
+      isPersistingRef.current = false
       setSyncing(false)
+      // 若在请求中途又有新的修改入队，继续触发下一次落盘
+      if (pendingPersistRef.current) {
+        pendingPersistRef.current = false
+        void persistItems(latestItemsRef.current)
+      }
     }
   }
 
@@ -99,10 +135,10 @@ export function ShoppingListView({
     const unit = inputUnit.trim()
 
     const newItem: ShoppingListItem = {
-      id: `manual_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `item_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       name,
-      qty,
-      unit,
+      qty: qty && qty > 0 ? qty : null,
+      unit: unit || '',
       checked: false,
     }
 
@@ -115,138 +151,126 @@ export function ShoppingListView({
     void persistItems(updated)
   }
 
-  // 4. 一键清除已备齐项
-  const clearCheckedItems = () => {
+  // 4. 清空已备齐的食材
+  const handleClearChecked = () => {
     if (checkedItems.length === 0) return
     const updated = items.filter((item) => !item.checked)
     setItems(updated)
     void persistItems(updated)
   }
 
-  // 5. 一键全部清空
-  const clearAll = () => {
-    if (!confirm('确定清空整个购物清单吗？')) return
-    setItems([])
-    void persistItems([])
-  }
+  // 5. 复制生成微信买菜清单文本
+  const handleCopyWeChat = async () => {
+    if (pendingItems.length === 0) {
+      alert('待采清单为空，无需买菜啦！')
+      return
+    }
 
-  // 6. 复制微信分享文本
-  const copyShareText = () => {
-    if (pendingItems.length === 0) return
-    const textList = pendingItems.map((it, idx) => {
-      const amount = it.qty ? ` ${it.qty}${it.unit || ''}` : ''
-      return `${idx + 1}. ${it.name}${amount}`
-    })
-    const text = `🛒【买菜清单】\n${textList.join('\n')}\n\n（由「开饭」生成）`
-    void navigator.clipboard.writeText(text).then(() => {
+    const lines = [
+      '🛒【开饭·今日买菜清单】',
+      ...pendingItems.map((item, index) => {
+        const qtyStr = item.qty ? `${item.qty} ${item.unit}`.trim() : item.unit || '适量'
+        const fromStr = item.sourceRecipeTitle ? `（用于 ${item.sourceRecipeTitle}）` : ''
+        return `${index + 1}. ${item.name}：${qtyStr}${fromStr}`
+      }),
+      '—————————————',
+      '点击进入开饭可实时勾选备齐：https://kaifan.app/shopping-list',
+    ]
+
+    const text = lines.join('\n')
+
+    try {
+      await navigator.clipboard.writeText(text)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
-    })
+    } catch {
+      alert('复制失败，请手动复制')
+    }
   }
 
   return (
-    <div className="space-y-4">
-      {/* 进度与统计卡片 */}
+    <div className="space-y-5">
+      {/* 进度与快捷动作卡片 */}
       <section className="rounded-2xl bg-white p-5 shadow-sm space-y-3">
-        <div className="flex items-center justify-between text-xs text-ink/60">
-          <span className="font-semibold text-ink">
-            {pendingItems.length === 0 && totalCount > 0
-              ? '🎉 全部食材已备齐！'
-              : `待备齐 ${pendingItems.length} 项 / 已备齐 ${checkedItems.length} 项`}
-          </span>
-          <div className="flex items-center gap-2">
-            {syncing && <span className="text-xs text-brand">同步中…</span>}
-            <span className="font-bold text-brand">{progress}%</span>
+        <div className="flex items-center justify-between">
+          <div>
+            <span className="text-xs font-semibold text-ink/70">备料进度</span>
+            <div className="flex items-baseline gap-1 mt-0.5">
+              <span className="text-2xl font-bold text-ink">{checkedItems.length}</span>
+              <span className="text-xs text-ink/40">/ {totalCount} 项备齐</span>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleCopyWeChat}
+              disabled={pendingItems.length === 0}
+              className="rounded-xl bg-brand-soft px-3 py-2 text-xs font-semibold text-brand-deep active:scale-95 disabled:opacity-40"
+            >
+              {copied ? '✓ 已复制文本' : '📋 发给微信'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsAdding(!isAdding)}
+              className="rounded-xl bg-brand px-3.5 py-2 text-xs font-semibold text-white shadow-sm active:scale-95"
+            >
+              {isAdding ? '取消' : '+ 加项'}
+            </button>
           </div>
         </div>
 
         {/* 进度条 */}
-        <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-100">
-          <div
-            className="h-full bg-brand transition-all duration-300 rounded-full"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-
-        <div className="flex items-center justify-between pt-1 text-xs">
-          <button
-            type="button"
-            onClick={() => setIsAdding(!isAdding)}
-            className="font-semibold text-brand active:scale-95"
-          >
-            {isAdding ? '收起添加' : '+ 加一项食材'}
-          </button>
-          <div className="flex items-center gap-3">
-            {pendingItems.length > 0 && (
-              <button
-                type="button"
-                onClick={copyShareText}
-                className="text-ink/60 underline active:scale-95"
-              >
-                {copied ? '✓ 已复制文本' : '📋 复制微信文本'}
-              </button>
-            )}
-            {totalCount > 0 && (
-              <button
-                type="button"
-                onClick={clearAll}
-                className="text-neutral-400 active:scale-95"
-              >
-                清空
-              </button>
-            )}
+        {totalCount > 0 && (
+          <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-100">
+            <div
+              className="h-full bg-brand transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            />
           </div>
-        </div>
+        )}
       </section>
 
-      {/* 快捷添加表单 */}
+      {/* 手动加项表单 */}
       {isAdding && (
         <form
           onSubmit={handleAddItem}
-          className="rounded-2xl bg-white p-4 shadow-sm space-y-3 border border-brand/20"
+          className="rounded-2xl bg-white p-5 shadow-sm space-y-3 border border-brand/20 animate-in fade-in duration-200"
         >
-          <div className="text-xs font-bold text-ink">添加食材 / 调料</div>
-          <div className="flex gap-2">
+          <h2 className="text-xs font-bold text-ink/80">添加买菜 / 备料条目</h2>
+          <div className="space-y-2">
             <input
               type="text"
               value={inputName}
               onChange={(e) => setInputName(e.target.value)}
-              placeholder="食材名称（如：鸡蛋）"
-              className="flex-2 rounded-lg border border-neutral-200 px-3 py-2 text-xs outline-none focus:border-brand"
-              autoFocus
+              placeholder="食材名称（如：生姜、大葱、鸡胸肉）"
+              className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-xs outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
               required
+              autoFocus
             />
-            <input
-              type="number"
-              step="any"
-              value={inputQty}
-              onChange={(e) => setInputQty(e.target.value)}
-              placeholder="数量"
-              className="flex-1 rounded-lg border border-neutral-200 px-2 py-2 text-xs outline-none focus:border-brand text-center"
-            />
-            <input
-              type="text"
-              value={inputUnit}
-              onChange={(e) => setInputUnit(e.target.value)}
-              placeholder="单位"
-              className="flex-1 rounded-lg border border-neutral-200 px-2 py-2 text-xs outline-none focus:border-brand text-center"
-            />
+            <div className="flex gap-2">
+              <input
+                type="number"
+                step="any"
+                value={inputQty}
+                onChange={(e) => setInputQty(e.target.value)}
+                placeholder="数量（选填，如 500）"
+                className="flex-1 rounded-xl border border-neutral-200 px-3.5 py-2 text-xs outline-none focus:border-brand"
+              />
+              <input
+                type="text"
+                value={inputUnit}
+                onChange={(e) => setInputUnit(e.target.value)}
+                placeholder="单位（如 克、根、个）"
+                className="w-32 rounded-xl border border-neutral-200 px-3.5 py-2 text-xs outline-none focus:border-brand"
+              />
+            </div>
           </div>
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setIsAdding(false)}
-              className="rounded-lg bg-neutral-100 px-3 py-1.5 text-xs text-ink/60"
-            >
-              取消
-            </button>
-            <button
-              type="submit"
-              className="rounded-lg bg-brand px-4 py-1.5 text-xs font-semibold text-white shadow-sm"
-            >
-              确定加入
-            </button>
-          </div>
+          <button
+            type="submit"
+            className="w-full rounded-xl bg-brand py-2.5 text-xs font-semibold text-white shadow-sm"
+          >
+            确认加入清单
+          </button>
         </form>
       )}
 
@@ -256,114 +280,108 @@ export function ShoppingListView({
         </p>
       )}
 
-      {/* 空态 */}
-      {totalCount === 0 && !isAdding && (
-        <section className="rounded-2xl bg-white p-8 text-center shadow-sm space-y-3">
-          <p className="text-4xl">🛒</p>
-          <h2 className="text-sm font-semibold">购物清单是空的</h2>
-          <p className="text-xs text-ink/50 leading-5">
-            可以从「菜谱详情」或「点单汇总」一键存入，也可以点上方「+ 加一项食材」手动添加。
-          </p>
-          <button
-            type="button"
-            onClick={() => setIsAdding(true)}
-            className="rounded-xl bg-brand px-5 py-2.5 text-xs font-semibold text-white shadow-sm inline-block"
-          >
-            手动添加第一项
-          </button>
-        </section>
-      )}
-
-      {/* 待备齐食材列表（Unchecked） */}
-      {pendingItems.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-xs font-bold text-ink/70 px-1">
+      {/* 待采清单 */}
+      <section className="rounded-2xl bg-white p-5 shadow-sm space-y-3">
+        <div className="flex items-center justify-between border-b border-neutral-100 pb-2">
+          <h2 className="text-xs font-bold text-ink/80">
             待采购 / 待准备（{pendingItems.length}）
           </h2>
-          <div className="space-y-2">
+          {syncing && <span className="text-[10px] text-brand animate-pulse">正在保存…</span>}
+        </div>
+
+        {pendingItems.length === 0 ? (
+          <p className="py-6 text-center text-xs text-ink/40">
+            {totalCount === 0
+              ? '清单空空如也，从菜谱详情或点单汇总一键导入吧'
+              : '🎉 所有食材已全部备齐！'}
+          </p>
+        ) : (
+          <ul className="divide-y divide-neutral-100">
             {pendingItems.map((item) => (
-              <div
+              <li
                 key={item.id}
-                className="flex items-center justify-between rounded-2xl bg-white p-4 shadow-sm active:scale-[0.99] transition"
+                onClick={() => toggleItem(item.id)}
+                className="flex cursor-pointer select-none items-center justify-between py-3 transition hover:bg-neutral-50/60"
               >
-                <div
-                  className="flex items-center gap-3 flex-1 cursor-pointer select-none"
-                  onClick={() => toggleItem(item.id)}
-                >
-                  <div className="size-5 rounded-md border-2 border-brand/50 flex items-center justify-center bg-white transition">
-                    {item.checked ? <span className="text-brand font-bold text-xs">✓</span> : null}
-                  </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={item.checked}
+                    onChange={() => {}}
+                    className="size-4 rounded accent-brand"
+                    aria-label={`标记备齐 ${item.name}`}
+                  />
                   <div>
-                    <p className="text-sm font-semibold text-ink">{item.name}</p>
+                    <span className="font-semibold text-xs text-ink">{item.name}</span>
                     {item.sourceRecipeTitle && (
-                      <p className="text-[10px] text-ink/40">来自：{item.sourceRecipeTitle}</p>
+                      <span className="ml-1.5 rounded bg-brand-soft/60 px-1.5 py-0.5 text-[10px] text-brand-deep">
+                        {item.sourceRecipeTitle}
+                      </span>
                     )}
                   </div>
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <span className="text-xs font-medium text-brand-deep">
-                    {item.qty ? `${item.qty} ${item.unit || ''}` : item.unit || '适量'}
+                  <span className="text-xs font-bold text-brand-deep">
+                    {item.qty ? `${item.qty} ${item.unit}`.trim() : item.unit || '适量'}
                   </span>
                   <button
                     type="button"
-                    onClick={() => removeItem(item.id)}
-                    className="text-xs text-neutral-300 hover:text-red-400 p-1"
-                    title="删除"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      removeItem(item.id)
+                    }}
+                    className="text-neutral-300 hover:text-red-500 p-1 text-xs"
+                    aria-label="删除食材"
                   >
-                    ✕
+                    ×
                   </button>
                 </div>
-              </div>
+              </li>
             ))}
-          </div>
-        </section>
-      )}
+          </ul>
+        )}
+      </section>
 
-      {/* 已备齐食材列表（Checked） */}
+      {/* 已备齐清单 */}
       {checkedItems.length > 0 && (
-        <section className="space-y-2 pt-2">
-          <div className="flex items-center justify-between px-1">
-            <h2 className="text-xs font-bold text-ink/50">已备齐（{checkedItems.length}）</h2>
+        <section className="rounded-2xl bg-white/70 p-5 shadow-sm space-y-3">
+          <div className="flex items-center justify-between border-b border-neutral-100 pb-2">
+            <h2 className="text-xs font-bold text-ink/50">
+              已备齐 / 已买到（{checkedItems.length}）
+            </h2>
             <button
               type="button"
-              onClick={clearCheckedItems}
-              className="text-[11px] text-red-500 underline"
+              onClick={handleClearChecked}
+              className="text-xs text-red-500 hover:underline"
             >
-              清除已备齐项
+              清除已备齐
             </button>
           </div>
-          <div className="space-y-2 opacity-65">
-            {checkedItems.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between rounded-2xl bg-neutral-100/80 p-3.5 shadow-none transition"
-              >
-                <div
-                  className="flex items-center gap-3 flex-1 cursor-pointer select-none"
-                  onClick={() => toggleItem(item.id)}
-                >
-                  <div className="size-5 rounded-md border-2 border-neutral-400 bg-neutral-300 flex items-center justify-center text-white text-xs font-bold">
-                    ✓
-                  </div>
-                  <p className="text-sm text-ink/60 line-through">{item.name}</p>
-                </div>
 
+          <ul className="divide-y divide-neutral-100 opacity-70">
+            {checkedItems.map((item) => (
+              <li
+                key={item.id}
+                onClick={() => toggleItem(item.id)}
+                className="flex cursor-pointer select-none items-center justify-between py-2.5 transition line-through text-ink/40"
+              >
                 <div className="flex items-center gap-3">
-                  <span className="text-xs text-ink/40 line-through">
-                    {item.qty ? `${item.qty} ${item.unit || ''}` : item.unit || '适量'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => removeItem(item.id)}
-                    className="text-xs text-neutral-400 hover:text-red-400 p-1"
-                  >
-                    ✕
-                  </button>
+                  <input
+                    type="checkbox"
+                    checked={item.checked}
+                    onChange={() => {}}
+                    className="size-4 rounded accent-brand"
+                    aria-label={`取消备齐 ${item.name}`}
+                  />
+                  <span className="text-xs">{item.name}</span>
                 </div>
-              </div>
+                <span className="text-xs">
+                  {item.qty ? `${item.qty} ${item.unit}`.trim() : item.unit || ''}
+                </span>
+              </li>
             ))}
-          </div>
+          </ul>
         </section>
       )}
     </div>

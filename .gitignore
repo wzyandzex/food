@@ -3,10 +3,12 @@
 Thumbs.db
 Desktop.ini
 
-# Editors / IDE
+# Editors / IDE / Agents
 .idea/
 .vscode/
 *.swp
+.zcode/
+.scratch/
 
 # Secrets / environment
 .env
