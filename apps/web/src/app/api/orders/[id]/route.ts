@@ -56,25 +56,30 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       return { nickname: row.orderer_nickname, items: row.items ?? [] }
     })
 
-    // 汇总食材（同名合并；按份数倍乘由汇总逻辑统一处理）
-    const recipeIds: string[] = []
+    // 汇总食材（PRD §6.3：按份数倍乘后同名合并）
+    const servingsByRecipe = new Map<string, number>()
     for (const entry of entries) {
       for (const item of entry.items) {
-        if (item.recipeId) recipeIds.push(item.recipeId)
+        if (item.recipeId) {
+          const servings = item.servings ?? 1
+          servingsByRecipe.set(item.recipeId, (servingsByRecipe.get(item.recipeId) ?? 0) + servings)
+        }
       }
     }
 
     const ingredientsSummary: Array<{ name: string; qty: number; unit: string }> = []
-    if (recipeIds.length > 0) {
+    const recipeIdList = Array.from(servingsByRecipe.keys())
+    if (recipeIdList.length > 0) {
       const { data: recipeIngs, error: ingsError } = await supabase
         .from('recipe_ingredients')
-        .select('qty, unit, ingredients(name)')
-        .in('recipe_id', Array.from(new Set(recipeIds)))
+        .select('recipe_id, qty, unit, ingredients(name)')
+        .in('recipe_id', recipeIdList)
 
       if (ingsError) {
         console.error('食材汇总查询失败：', ingsError.message)
       } else {
         const rows = (recipeIngs ?? []) as unknown as Array<{
+          recipe_id: string
           qty: number | null
           unit: string | null
           ingredients: { name: string } | null
@@ -83,8 +88,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         for (const row of rows) {
           const name = row.ingredients?.name
           if (!name) continue
+          // 该菜谱被点的总份数作为倍乘系数；无定量标注为 0（展示为「适量」）
+          const factor = servingsByRecipe.get(row.recipe_id) ?? 1
+          const amount = (Number(row.qty) || 0) * factor
           const current = map.get(name) || { qty: 0, unit: row.unit || '' }
-          current.qty += Number(row.qty) || 0
+          current.qty += amount
           map.set(name, current)
         }
         for (const [name, val] of map.entries()) {

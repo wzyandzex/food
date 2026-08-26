@@ -29,6 +29,45 @@ export default function OrderSummaryPage() {
   const [data, setData] = useState<OrderDetailPayload | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  // 「家里已有」的食材名集合：勾掉后剩余即为缺失清单（PRD §4.4）
+  const [haveIngredients, setHaveIngredients] = useState<Set<string>>(new Set())
+  const [savingList, setSavingList] = useState(false)
+  const [listSavedMsg, setListSavedMsg] = useState('')
+
+  const missingIngredients =
+    data?.ingredientsSummary.filter((ing) => !haveIngredients.has(ing.name)) ?? []
+
+  const toggleHaveIngredient = (name: string) => {
+    setHaveIngredients((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
+
+  const saveMissingToList = async () => {
+    setSavingList(true)
+    setListSavedMsg('')
+    try {
+      const token = await getAccessToken()
+      if (!token) throw new Error('请先登录')
+      const res = await fetch('/api/shopping-lists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          items: missingIngredients.map((ing) => ({ name: ing.name, qty: ing.qty, unit: ing.unit })),
+        }),
+      })
+      const body = (await res.json()) as { ok?: boolean; count?: number; error?: string }
+      if (!res.ok || !body.ok) throw new Error(body.error || '保存失败')
+      setListSavedMsg(`已把 ${body.count} 项缺失食材存入购物清单 ✓`)
+    } catch (err) {
+      setListSavedMsg((err as Error).message)
+    } finally {
+      setSavingList(false)
+    }
+  }
 
   useEffect(() => {
     if (authLoading) return
@@ -142,7 +181,7 @@ export default function OrderSummaryPage() {
           <section className="rounded-2xl bg-white p-5 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-bold text-ink">🛒 采购清单 / 缺失食材</h2>
-              <span className="text-xs text-ink/40">自动合并同名食材</span>
+              <span className="text-xs text-ink/40">按份数倍乘 · 同名合并</span>
             </div>
 
             {data.ingredientsSummary.length === 0 ? (
@@ -150,16 +189,56 @@ export default function OrderSummaryPage() {
                 点单菜品暂无可提取的标准食材表（自由报菜名需手动采购）
               </p>
             ) : (
-              <ul className="space-y-2 text-xs">
-                {data.ingredientsSummary.map((ing, idx) => (
-                  <li key={idx} className="flex justify-between items-center bg-neutral-50 p-2.5 rounded-lg">
-                    <span className="font-medium text-ink">{ing.name}</span>
-                    <span className="text-brand-deep font-semibold">
-                      {ing.qty > 0 ? `${ing.qty} ${ing.unit}` : '适量'}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <>
+                <ul className="space-y-2 text-xs">
+                  {data.ingredientsSummary.map((ing) => {
+                    const haveIt = haveIngredients.has(ing.name)
+                    return (
+                      <li
+                        key={ing.name}
+                        onClick={() => toggleHaveIngredient(ing.name)}
+                        className={`flex cursor-pointer select-none items-center justify-between rounded-lg p-2.5 transition-colors ${
+                          haveIt ? 'bg-green-50/70' : 'bg-neutral-50'
+                        }`}
+                      >
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={haveIt}
+                            onChange={() => {}}
+                            className="size-3.5 rounded accent-green-600"
+                            aria-label={`标记家里已有 ${ing.name}`}
+                          />
+                          <span className={`font-medium text-ink ${haveIt ? 'line-through opacity-60' : ''}`}>
+                            {ing.name}
+                          </span>
+                        </label>
+                        <span className="text-brand-deep font-semibold">
+                          {ing.qty > 0 ? `${ing.qty} ${ing.unit}` : '适量'}
+                        </span>
+                      </li>
+                    )
+                  })}
+                </ul>
+
+                <div className="border-t border-neutral-100 pt-3 space-y-2">
+                  <p className="text-xs text-ink/60">
+                    勾掉「家里已有」后，缺失食材共{' '}
+                    <span className="font-semibold text-brand-deep">{missingIngredients.length}</span> 项
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void saveMissingToList()}
+                    disabled={savingList || missingIngredients.length === 0}
+                    className="w-full rounded-xl bg-brand py-2.5 text-xs font-semibold text-white shadow-sm disabled:opacity-40"
+                  >
+                    {savingList ? '保存中…' : '🛒 一键存为购物清单'}
+                  </button>
+                  {listSavedMsg && (
+                    <p className="text-xs text-green-700">{listSavedMsg}</p>
+                  )}
+                </div>
+              </>
             )}
           </section>
         </>
