@@ -3,7 +3,8 @@ import { notFound } from 'next/navigation'
 
 import { SAMPLE_RECIPES, type RecipeV1 } from '@kaifan/shared'
 
-import { createServerClient } from '@/lib/supabase'
+import { RecipeDetailInteractive } from '@/components/recipe-detail-interactive'
+import { createServerClient, isSupabaseConfigured } from '@/lib/supabase'
 
 interface IngredientRow {
   qty: number | null
@@ -19,6 +20,8 @@ interface StepLike {
 }
 
 async function fetchRecipe(id: string): Promise<RecipeV1 | null> {
+  if (!isSupabaseConfigured()) return null
+
   const supabase = createServerClient()
   const { data, error } = await supabase
     .from('recipes')
@@ -31,7 +34,6 @@ async function fetchRecipe(id: string): Promise<RecipeV1 | null> {
     .maybeSingle()
 
   if (error) {
-    // 查询异常不等同于「不存在」：记录日志后按未找到处理，避免泄露内部错误
     console.error('菜谱详情查询失败：', error.message)
     return null
   }
@@ -97,10 +99,27 @@ export default async function RecipeDetailPage({
         <Link href="/recipes" className="mb-2 inline-block text-sm text-ink/50">
           ← 返回菜谱市场
         </Link>
+
+        {/* 成品封面图（PRD §4.2） */}
+        {recipe.cover ? (
+          <div className="mb-4 overflow-hidden rounded-2xl bg-neutral-100 shadow-sm">
+            <img
+              src={recipe.cover}
+              alt={recipe.title}
+              className="h-48 w-full object-cover"
+              loading="lazy"
+            />
+          </div>
+        ) : (
+          <div className="mb-4 flex h-32 w-full items-center justify-center rounded-2xl bg-brand-soft/70 text-4xl">
+            🍳
+          </div>
+        )}
+
         <h1 className="text-2xl font-bold">{recipe.title}</h1>
         <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-ink/55">
           <span>⏱ {recipe.minutes} 分钟</span>
-          <span>· 份量 {recipe.servings}</span>
+          <span>· 份量 {recipe.servings} 人份</span>
           <span>· 难度 {'⭐'.repeat(recipe.difficulty)}</span>
         </div>
         {recipe.tags.length > 0 && (
@@ -117,51 +136,8 @@ export default async function RecipeDetailPage({
         )}
       </header>
 
-      <section className="mb-6 rounded-2xl bg-white p-5 shadow-sm">
-        <h2 className="mb-3 font-semibold">食材</h2>
-        <ul className="space-y-2 text-sm">
-          {recipe.ingredients.map((ingredient, index) => (
-            <li key={`${ingredient.name}-${index}`} className="flex justify-between">
-              <span>
-                {ingredient.name}
-                {ingredient.optional && (
-                  <span className="ml-1 text-xs text-ink/40">（可选）</span>
-                )}
-              </span>
-              <span className="text-ink/55">
-                {ingredient.qty != null ? `${ingredient.qty} ${ingredient.unit ?? ''}` : ''}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section className="mb-6 rounded-2xl bg-white p-5 shadow-sm">
-        <h2 className="mb-3 font-semibold">做法</h2>
-        <ol className="space-y-3">
-          {recipe.steps.map((step, index) => (
-            <li key={index} className="flex gap-3 text-sm leading-6">
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white">
-                {index + 1}
-              </span>
-              <span>
-                {step.text}
-                {step.durationMinutes != null && (
-                  <span className="ml-1 text-xs text-ink/40">
-                    （约 {step.durationMinutes} 分钟）
-                  </span>
-                )}
-              </span>
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      {recipe.authorNote && (
-        <p className="rounded-xl bg-brand-soft px-4 py-3 text-xs text-ink/60">
-          {recipe.authorNote}
-        </p>
-      )}
+      {/* 交互区：食材勾选、步骤进度、营养、署名 */}
+      <RecipeDetailInteractive recipe={recipe} />
     </main>
   )
 }
