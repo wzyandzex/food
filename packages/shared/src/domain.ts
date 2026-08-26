@@ -38,6 +38,12 @@ export const RECIPE_SOURCE_TYPES = [
 ] as const
 export type RecipeSourceType = (typeof RECIPE_SOURCE_TYPES)[number]
 
+/** 饭搭子群人数上限（PRD §4.6：2–10 人固定小圈子） */
+export const CIRCLE_MAX_MEMBERS = 10
+
+export const CIRCLE_MEMBER_ROLES = ['owner', 'member'] as const
+export type CircleMemberRole = (typeof CIRCLE_MEMBER_ROLES)[number]
+
 /** 购物清单中的单项 */
 export interface ShoppingListItem {
   id: string

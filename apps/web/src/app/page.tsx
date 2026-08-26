@@ -148,6 +148,45 @@ export default function HomePage() {
           </div>
           <p className="text-xs text-ink/60">一键汇总点单与菜谱缺失食材，买菜即时勾选已备齐</p>
         </Link>
+
+        <Link
+          href="/fridge"
+          className="block rounded-2xl bg-white p-4 shadow-sm active:scale-[0.99]"
+        >
+          <div className="mb-1 flex items-center justify-between">
+            <h2 className="font-semibold text-sm">🧊 清冰箱做菜</h2>
+            <span className="rounded-full bg-brand-soft px-2 py-0.5 text-xs font-medium text-brand-deep">
+              按食材搜
+            </span>
+          </div>
+          <p className="text-xs text-ink/60">报上家里现有的食材，看看现在就能做什么菜</p>
+        </Link>
+
+        <Link
+          href="/plan"
+          className="block rounded-2xl bg-white p-4 shadow-sm active:scale-[0.99]"
+        >
+          <div className="mb-1 flex items-center justify-between">
+            <h2 className="font-semibold text-sm">📅 排餐计划</h2>
+            <span className="rounded-full bg-brand-soft px-2 py-0.5 text-xs font-medium text-brand-deep">
+              一周日历
+            </span>
+          </div>
+          <p className="text-xs text-ink/60">提前安排每顿吃什么，标记已做/跳过，不再天天下厨前纠结</p>
+        </Link>
+
+        <Link
+          href="/circles"
+          className="block rounded-2xl bg-white p-4 shadow-sm active:scale-[0.99]"
+        >
+          <div className="mb-1 flex items-center justify-between">
+            <h2 className="font-semibold text-sm">👥 饭搭子群</h2>
+            <span className="rounded-full bg-brand-soft px-2 py-0.5 text-xs font-medium text-brand-deep">
+              固定饭搭
+            </span>
+          </div>
+          <p className="text-xs text-ink/60">拉另一半和家人进圈，圈内发点单一键通知全员，不用转发链接</p>
+        </Link>
       </section>
 
       <Link

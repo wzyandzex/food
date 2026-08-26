@@ -2,9 +2,11 @@ import { NextResponse } from 'next/server'
 import { randomBytes } from 'node:crypto'
 
 import { createServerClient, getAuthUserId } from '@/lib/supabase'
+import { sendNotificationToUsers } from '@/lib/push-notifications'
 
 /** 发起点单：生成 OrderSession + ShareToken，返回用于分享的短 token。
- *  发起人身份以 Authorization Bearer 为准，不信任请求体里的 hostId。 */
+ *  发起人身份以 Authorization Bearer 为准，不信任请求体里的 hostId。
+ *  可选 circleId：把点单挂到饭搭子群，创建后通知除发起人外的全体成员。 */
 export async function POST(request: Request) {
   const hostId = await getAuthUserId(request)
   if (!hostId) {
@@ -17,6 +19,7 @@ export async function POST(request: Request) {
     allowFreeInput?: boolean
     perPersonLimit?: number
     candidateRecipeIds?: string[]
+    circleId?: string
   } | null
 
   if (!body?.title || !body.deadline) {
@@ -41,6 +44,34 @@ export async function POST(request: Request) {
   try {
     const supabase = createServerClient()
 
+    // 0. 圈内点单：校验发起人是该圈成员
+    let circleId: string | null = null
+    let circleName: string | null = null
+    let circleNameForNotify: string | null = null
+    if (typeof body?.circleId === 'string' && body.circleId.length > 0) {
+      const UUID_RE_CIRCLE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      if (!UUID_RE_CIRCLE.test(body.circleId)) {
+        return NextResponse.json({ error: '圈子标识不合法' }, { status: 400 })
+      }
+
+      const { data: membership, error: membershipError } = await supabase
+        .from('circle_members')
+        .select('role')
+        .eq('circle_id', body.circleId)
+        .eq('user_id', hostId)
+        .maybeSingle()
+
+      if (membershipError) throw new Error(membershipError.message)
+      if (!membership) {
+        return NextResponse.json({ error: '你不是这个饭搭子群的成员，无法往圈内发点单' }, { status: 403 })
+      }
+
+      const { data: circleRow } = await supabase.from('circles').select('name').eq('id', body.circleId).maybeSingle()
+      circleId = body.circleId
+      circleName = circleRow?.name ?? null
+      circleNameForNotify = circleName
+    }
+
     // 1. 创建 OrderSession（host_id 取自已验证身份）
     const { data: sessionData, error: sessionError } = await supabase
       .from('order_sessions')
@@ -52,6 +83,7 @@ export async function POST(request: Request) {
         per_person_limit: body.perPersonLimit ?? 3,
         candidate_recipe_ids: candidateRecipeIds,
         status: 'open',
+        circle_id: circleId,
       })
       .select('id')
       .single()
@@ -77,7 +109,36 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `生成分享令牌失败：${tokenError.message}` }, { status: 500 })
     }
 
-    return NextResponse.json({ ok: true, sessionId, token })
+    // 3. 圈内点单：通知除发起人外的全体成员（fire-and-forget）
+    let notifiedCount = 0
+    if (circleId) {
+      try {
+        const { data: memberRows } = await supabase
+          .from('circle_members')
+          .select('user_id')
+          .eq('circle_id', circleId)
+          .neq('user_id', hostId)
+
+        const memberIds = (memberRows ?? []).map((row) => row.user_id as string)
+        const { data: hostProfile } = await supabase
+          .from('profiles')
+          .select('nickname')
+          .eq('id', hostId)
+          .maybeSingle()
+
+        const result = await sendNotificationToUsers(supabase, memberIds, {
+          type: 'circle_order',
+          title: `🍲 ${hostProfile?.nickname ?? '饭搭子'} 在${circleNameForNotify ? `「${circleNameForNotify}」` : '圈子里'}发起点单`,
+          body: `「${body.title}」，截止 ${new Date(deadlineTime).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`,
+          url: `/o/${token}`,
+        })
+        notifiedCount = result.notifiedCount
+      } catch (notifyError) {
+        console.error('圈内点单通知失败：', notifyError)
+      }
+    }
+
+    return NextResponse.json({ ok: true, sessionId, token, circleName, notifiedCount })
   } catch (err) {
     console.error('发起点单异常：', err)
     return NextResponse.json({ error: `系统异常：${(err as Error).message}` }, { status: 500 })

@@ -42,7 +42,20 @@ export default function LoginPage() {
         setError(signInError.message === 'Invalid login credentials' ? '邮箱或密码错误' : signInError.message)
         return
       }
-      router.push('/')
+
+      // 登录前若有待回跳页面（如邀请链接落地页），优先跳转回去
+      let redirectTo = '/'
+      try {
+        const storedRedirect = sessionStorage.getItem('kaifan_redirect_after_login')
+        if (storedRedirect?.startsWith('/')) {
+          redirectTo = storedRedirect
+          sessionStorage.removeItem('kaifan_redirect_after_login')
+        }
+      } catch {
+        // 存储不可用时回落首页
+      }
+
+      router.push(redirectTo)
       router.refresh()
     } catch (err) {
       setError((err as Error).message)

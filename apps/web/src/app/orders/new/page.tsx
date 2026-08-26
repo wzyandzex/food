@@ -13,6 +13,12 @@ interface RecipeOption {
   difficulty: number
 }
 
+interface CircleOption {
+  id: string
+  name: string
+  memberCount: number
+}
+
 export default function NewOrderPage() {
   const router = useRouter()
   const { user, loading, getAccessToken } = useAuth()
@@ -25,9 +31,42 @@ export default function NewOrderPage() {
   const [selectedRecipeIds, setSelectedRecipeIds] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [createdToken, setCreatedToken] = useState<string | null>(null)
+  const [notifiedCount, setNotifiedCount] = useState(0)
+  const [circleName, setCircleName] = useState('')
   const [error, setError] = useState('')
   // true = 菜谱来自本地样例（未配置数据库），其 id 是菜名而非 UUID，不得提交入库
   const [usingSampleRecipes, setUsingSampleRecipes] = useState(false)
+
+  // 饭搭子群：可选挂到圈内
+  const [myCircles, setMyCircles] = useState<CircleOption[]>([])
+  const [selectedCircleId, setSelectedCircleId] = useState('')
+
+  useEffect(() => {
+    if (!user) return
+
+    // 详情页「发圈内点单」按钮经 sessionStorage 预选圈子
+    try {
+      const preselected = sessionStorage.getItem('kaifan_order_circle_id')
+      if (preselected) {
+        setSelectedCircleId(preselected)
+        sessionStorage.removeItem('kaifan_order_circle_id')
+      }
+    } catch {
+      // 存储不可用则忽略预选
+    }
+
+    void (async () => {
+      try {
+        const accessToken = await getAccessToken()
+        if (!accessToken) return
+        const res = await fetch('/api/circles', { headers: { Authorization: `Bearer ${accessToken}` } })
+        const body = (await res.json()) as { circles?: CircleOption[] }
+        setMyCircles(body.circles ?? [])
+      } catch {
+        // 圈子加载失败不阻塞点单主流程
+      }
+    })()
+  }, [user, getAccessToken])
 
   useEffect(() => {
     // 载入可选菜谱：source=sample 表示服务端数据源未配置，仅作界面演示
@@ -88,15 +127,18 @@ export default function NewOrderPage() {
           allowFreeInput,
           // 样例菜谱的 id 是菜名不是 UUID：演示模式下不上传候选，避免写库必报错
           candidateRecipeIds: usingSampleRecipes ? [] : selectedRecipeIds,
+          circleId: selectedCircleId || undefined,
         }),
       })
 
-      const data = (await res.json()) as { ok?: boolean; token?: string; error?: string }
+      const data = (await res.json()) as { ok?: boolean; token?: string; notifiedCount?: number; circleName?: string | null; error?: string }
       if (!res.ok || !data.ok || !data.token) {
         throw new Error(data.error || '创建点单失败')
       }
 
       setCreatedToken(data.token)
+      setNotifiedCount(data.notifiedCount ?? 0)
+      setCircleName(data.circleName ?? '')
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -131,6 +173,11 @@ export default function NewOrderPage() {
         <section className="rounded-2xl bg-white p-6 text-center shadow-sm space-y-4">
           <div className="text-4xl">🚀</div>
           <h1 className="text-lg font-bold">点单已发起！</h1>
+          {circleName && notifiedCount > 0 ? (
+            <p className="text-xs leading-5 text-green-700 font-medium">
+              ✓ 已通知「{circleName}」的 {notifiedCount} 位圈友，圈内动态页可直接选菜。
+            </p>
+          ) : null}
           <p className="text-xs text-ink/60 leading-5">
             把下面的链接发送给微信好友或群聊，对方点击即可免登录选菜。
           </p>
@@ -237,6 +284,38 @@ export default function NewOrderPage() {
             允许对方自由报菜名（库里没有的也可以写）
           </label>
         </section>
+
+        {/* 饭搭子群选择（可选） */}
+        {myCircles.length > 0 && (
+          <section className="rounded-2xl bg-white p-5 shadow-sm space-y-3">
+            <h2 className="text-xs font-bold text-ink/80">
+              发到饭搭子群<span className="font-normal text-ink/45">（可选，创建后自动通知全员）</span>
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedCircleId('')}
+                className={`rounded-full px-3 py-1.5 text-xs transition ${
+                  selectedCircleId === '' ? 'bg-neutral-800 text-white' : 'bg-neutral-100 text-ink/70'
+                }`}
+              >
+                不发群，仅链接分享
+              </button>
+              {myCircles.map((circle) => (
+                <button
+                  key={circle.id}
+                  type="button"
+                  onClick={() => setSelectedCircleId(circle.id)}
+                  className={`rounded-full px-3 py-1.5 text-xs transition ${
+                    selectedCircleId === circle.id ? 'bg-brand text-white' : 'bg-neutral-100 text-ink/70'
+                  }`}
+                >
+                  👥 {circle.name}（{circle.memberCount}人）
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* 候选菜谱 */}
         <section className="rounded-2xl bg-white p-5 shadow-sm space-y-3">

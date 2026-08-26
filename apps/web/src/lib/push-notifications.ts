@@ -122,3 +122,27 @@ export async function sendNotificationToUser(
 
   return { notificationId, deliveredPushCount: delivered, clearedStaleCount: cleared }
 }
+
+export interface BatchSendResult {
+  notifiedCount: number
+  deliveredPushCount: number
+}
+
+/** 给一群用户批量发通知（圈子/点单参与者），fire-and-forget 场景友好 */
+export async function sendNotificationToUsers(
+  supabase: ReturnType<typeof import('@/lib/supabase').createServerClient>,
+  userIds: string[],
+  input: Omit<SendNotificationInput, 'userId'>,
+): Promise<BatchSendResult> {
+  const unique = Array.from(new Set(userIds)).filter(Boolean)
+  if (unique.length === 0) return { notifiedCount: 0, deliveredPushCount: 0 }
+
+  const results = await Promise.all(
+    unique.map((userId) => sendNotificationToUser(supabase, { ...input, userId })),
+  )
+
+  return {
+    notifiedCount: results.length,
+    deliveredPushCount: results.reduce((sum, result) => sum + result.deliveredPushCount, 0),
+  }
+}
