@@ -36,7 +36,7 @@ export async function saveRecipe(
       tags: recipe.tags,
       nutrition: recipe.nutrition ?? null,
       steps: recipe.steps,
-      ai_generated: recipe.sourceType === 'llm',
+      ai_generated: recipe.sourceType === 'llm' || recipe.sourceType === 'ocr',
       status,
     })
     .select('id')

@@ -34,6 +34,16 @@ export default function ImportPage() {
   const [report, setReport] = useState<ImportResponse | null>(null)
   const [error, setError] = useState('')
 
+  // URL 导入状态
+  const [importUrl, setImportUrl] = useState('')
+  const [urlPending, setUrlPending] = useState(false)
+  const [urlResult, setUrlResult] = useState<string | null>(null)
+
+  // OCR 图片导入状态
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [ocrPending, setOcrPending] = useState(false)
+  const [ocrResult, setOcrResult] = useState<string | null>(null)
+
   // 待确认队列状态（PRD §4.2 两段式第二段）
   const [pendingList, setPendingList] = useState<PendingItem[]>([])
   const [loadingPending, setLoadingPending] = useState(false)
@@ -144,6 +154,74 @@ export default function ImportPage() {
       setError(`网络错误：${(err as Error).message}`)
     } finally {
       setPending(false)
+    }
+  }
+
+  const handleUrlImport = async () => {
+    const url = importUrl.trim()
+    if (!url) return
+
+    setUrlPending(true)
+    setUrlResult(null)
+    try {
+      const response = await fetch('/api/recipes/import-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      })
+      const body = (await response.json()) as {
+        ok?: boolean
+        message?: string
+        summary?: { title: string; ingredientCount: number; stepCount: number; minutes: number }
+        error?: string
+      }
+      if (!response.ok || !body.ok) {
+        setUrlResult(`✗ ${body.error ?? `导入失败（${response.status}）`}`)
+        return
+      }
+      setUrlResult(
+        `✓ ${body.message}——「${body.summary?.title}」${body.summary?.ingredientCount} 种食材 / ${body.summary?.stepCount} 步 / 约 ${body.summary?.minutes} 分钟`,
+      )
+      setImportUrl('')
+      void fetchPending()
+    } catch (err) {
+      setUrlResult(`✗ 网络错误：${(err as Error).message}`)
+    } finally {
+      setUrlPending(false)
+    }
+  }
+
+  const handleOcrImport = async () => {
+    if (!imageFile) return
+
+    setOcrPending(true)
+    setOcrResult(null)
+    try {
+      const formData = new FormData()
+      formData.append('image', imageFile)
+      const response = await fetch('/api/recipes/import-image', {
+        method: 'POST',
+        body: formData,
+      })
+      const body = (await response.json()) as {
+        ok?: boolean
+        message?: string
+        summary?: { title: string; ingredientCount: number; stepCount: number; minutes: number }
+        error?: string
+      }
+      if (!response.ok || !body.ok) {
+        setOcrResult(`✗ ${body.error ?? `导入失败（${response.status}）`}`)
+        return
+      }
+      setOcrResult(
+        `✓ ${body.message}——「${body.summary?.title}」${body.summary?.ingredientCount} 种食材 / ${body.summary?.stepCount} 步 / 约 ${body.summary?.minutes} 分钟`,
+      )
+      setImageFile(null)
+      void fetchPending()
+    } catch (err) {
+      setOcrResult(`✗ 网络错误：${(err as Error).message}`)
+    } finally {
+      setOcrPending(false)
     }
   }
 
@@ -309,6 +387,71 @@ export default function ImportPage() {
         >
           {pending ? '生成暂存中…' : '生成并暂存到队列'}
         </button>
+      </section>
+
+      {/* 第一段：URL 单篇导入 */}
+      <section className="mb-6 rounded-xl border border-neutral-200 bg-white p-6">
+        <h2 className="mb-1 font-semibold">4. URL 单篇导入（抓取 + AI 抽取，暂存入库）</h2>
+        <p className="mb-3 text-sm text-neutral-500">
+          粘贴任意菜谱网页链接（下厨房、豆果、美食博客等），服务端抓取正文后由大模型抽取为标准菜谱，自动署名原文链接
+        </p>
+        <div className="flex gap-2">
+          <input
+            type="url"
+            value={importUrl}
+            onChange={(event) => setImportUrl(event.target.value)}
+            placeholder="https://www.xiachufang.com/recipe/..."
+            className="min-w-0 flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+          />
+          <button
+            type="button"
+            onClick={handleUrlImport}
+            disabled={urlPending || importUrl.trim().length === 0}
+            className="shrink-0 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+          >
+            {urlPending ? 'AI 抽取中（约半分钟）…' : '抓取并抽取'}
+          </button>
+        </div>
+        {urlResult && (
+          <p
+            className={`mt-3 rounded-lg p-3 text-sm ${
+              urlResult.startsWith('✓') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+            }`}
+          >
+            {urlResult}
+          </p>
+        )}
+      </section>
+
+      {/* 第一段：OCR 图片导入 */}
+      <section className="mb-6 rounded-xl border border-neutral-200 bg-white p-6">
+        <h2 className="mb-1 font-semibold">5. 图片 OCR 导入（视觉模型识别，暂存入库）</h2>
+        <p className="mb-3 text-sm text-neutral-500">
+          上传菜谱照片（书本、手写笔记、聊天截图），AI 识别文字并转为标准菜谱。支持 JPG / PNG / WebP，≤5MB
+        </p>
+        <input
+          type="file"
+          accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+          onChange={(event) => setImageFile(event.target.files?.[0] ?? null)}
+          className="mb-3 block w-full text-sm"
+        />
+        <button
+          type="button"
+          onClick={handleOcrImport}
+          disabled={ocrPending || !imageFile}
+          className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+        >
+          {ocrPending ? 'AI 识别中（约半分钟）…' : '识别并暂存到队列'}
+        </button>
+        {ocrResult && (
+          <p
+            className={`mt-3 rounded-lg p-3 text-sm ${
+              ocrResult.startsWith('✓') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+            }`}
+          >
+            {ocrResult}
+          </p>
+        )}
       </section>
 
       {error && (
