@@ -1,23 +1,6 @@
 import { NextResponse } from 'next/server'
-import { MEAL_TYPES, type MealType } from '@kaifan/shared'
+import { MEAL_TYPES, toLocalDateKey, type CookingStats, type MealType } from '@kaifan/shared'
 import { createServerClient, getAuthUserId, isSupabaseConfigured } from '@/lib/supabase'
-
-export interface CookingStats {
-  totals: {
-    monthCount: number
-    totalSessions: number
-    totalDishes: number
-    totalPhotos: number
-    avgRating: number | null
-    orderLinkedRatio: number | null
-  }
-  streaks: { currentStreakDays: number; longestStreakDays: number }
-  newDishCount: number
-  thisMonthNewDishes: number
-  topDishes: Array<{ title: string; count: number; recipeId?: string }>
-  mealTypeDist: Record<MealType, number>
-  monthlyTrend: Array<{ month: string; sessions: number }>
-}
 
 interface SessionRow {
   id: string
@@ -34,11 +17,8 @@ interface DishRow {
   photos: string[]
 }
 
-function toLocalDateKey(date: Date): string {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
+interface SessionWithDishes extends SessionRow {
+  cook_dishes: DishRow[] | null
 }
 
 /** 连续做饭天数：distinct date 排序后线性扫描，计算当前连续段与最长连续段 */
@@ -94,20 +74,19 @@ export async function GET(request: Request) {
   try {
     const supabase = createServerClient()
 
-    // 一次查询：顿次 + 嵌套菜品（FK 嵌入），RLS 已限定本人
+    // 一次查询：顿次 + 嵌套菜品（FK 嵌入），RLS 已限定本人；limit 上限防止长期全量拉取
     const { data: rows, error: queryError } = await supabase
       .from('cook_sessions')
       .select('id, date, meal_type, rating, order_session_id, cook_dishes(session_id, snapshot_title, recipe_id, photos)')
       .eq('user_id', userId)
+      .order('date', { ascending: false })
+      .limit(1000)
 
     if (queryError) throw new Error(queryError.message)
 
-    type SessionWithDishes = SessionRow & {
-      cook_dishes: DishRow[] | null
-    }
-
-    const sessions = ((rows ?? []) as unknown as SessionWithDishes[]).map(({ cook_dishes, ...rest }) => rest)
-    const dishes = (rows ?? []).flatMap((row) => (row as unknown as SessionWithDishes).cook_dishes ?? [])
+    const typedRows = (rows ?? []) as unknown as SessionWithDishes[]
+    const sessions = typedRows.map(({ cook_dishes, ...rest }) => rest)
+    const dishes = typedRows.flatMap((row) => row.cook_dishes ?? [])
 
     const now = new Date()
     const thisMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`

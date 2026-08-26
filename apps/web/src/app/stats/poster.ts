@@ -1,4 +1,4 @@
-import type { CookingStats } from '@/app/api/stats/cooking/route'
+import type { CookingStats } from '@kaifan/shared'
 
 const BRAND = '#d9480f'
 const BRAND_DEEP = '#a63305'
@@ -82,7 +82,8 @@ export function renderStatsPoster(stats: CookingStats, nickname: string): string
     if (kpi.unit) {
       ctx.font = '34px "PingFang SC", "Microsoft YaHei", sans-serif'
       ctx.fillStyle = INK_SOFT
-      ctx.fillText(kpi.unit, x + 40 + ctx.measureText(kpi.value).width * 0 + (kpi.value.length >= 3 ? 300 : 200), y + 165)
+      const valueWidth = ctx.measureText(kpi.value).width
+      ctx.fillText(kpi.unit, x + 40 + valueWidth + 16, y + 165)
     }
   })
 
@@ -101,7 +102,8 @@ export function renderStatsPoster(stats: CookingStats, nickname: string): string
 
     ctx.fillStyle = INK
     ctx.font = 'bold 42px "PingFang SC", "Microsoft YaHei", sans-serif'
-    ctx.fillText(dish.title.slice(0, 12), 160, y)
+    // 按码点截断，避免把 emoji/生僻字劈成乱码
+    ctx.fillText(Array.from(dish.title).slice(0, 12).join(''), 160, y)
 
     ctx.fillStyle = INK_SOFT
     ctx.font = '34px "PingFang SC", "Microsoft YaHei", sans-serif'

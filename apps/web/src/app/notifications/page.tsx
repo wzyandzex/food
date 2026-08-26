@@ -72,8 +72,9 @@ export default function NotificationsPage() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ id }),
       })
-    } catch {
-      // 站内乐观更新失败可接受，下次进入页面会自动同步
+    } catch (err) {
+      // 站内乐观更新失败可接受，下次进入页面会自动同步；错误仍需可见
+      console.error('标记已读失败：', err)
     }
   }
 
@@ -91,8 +92,9 @@ export default function NotificationsPage() {
           body: JSON.stringify({ markAllRead: true }),
         })
       }
-    } catch {
-      // 忽略网络错误，UI 已乐观更新
+    } catch (err) {
+      // 忽略网络错误，UI 已乐观更新；错误仍需可见
+      console.error('全部已读标记失败：', err)
     } finally {
       setOperating(false)
     }
@@ -111,8 +113,9 @@ export default function NotificationsPage() {
           headers: { Authorization: `Bearer ${token}` },
         })
       }
-    } catch {
-      // 同上，本地乐观处理
+    } catch (err) {
+      // 同上，本地乐观处理；错误仍需可见
+      console.error('清空已读通知失败：', err)
     } finally {
       setOperating(false)
     }

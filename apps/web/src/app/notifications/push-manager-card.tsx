@@ -48,6 +48,21 @@ export function PushManagerCard({ onSubscribedChange }: PushManagerCardProps) {
         const registration = await navigator.serviceWorker.ready
         const existing = await registration.pushManager.getSubscription()
         if (permission === 'granted' && existing) {
+          // 密钥轮换检测：订阅所用的 applicationServerKey 与当前公钥不一致时，自动退订旧订阅
+          const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+          if (vapidPublicKey) {
+            const expected = urlBase64ToUint8Array(vapidPublicKey)
+            const actual = new Uint8Array(existing.options.applicationServerKey ?? [])
+            const keyMatches =
+              actual.length === expected.length && actual.every((byte, idx) => byte === expected[idx])
+            if (actual.length > 0 && !keyMatches) {
+              console.warn('检测到推送订阅使用旧 VAPID 公钥，已自动退订，请重新开启系统推送')
+              await existing.unsubscribe()
+              setPermissionState('granted')
+              setHintText('推送密钥已更新，请重新点击「开启系统推送」完成重新订阅。')
+              return
+            }
+          }
           setPermissionState('subscribed')
         } else {
           setPermissionState(permission === 'granted' ? 'granted' : 'default')

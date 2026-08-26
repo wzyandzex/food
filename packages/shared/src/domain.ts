@@ -57,3 +57,21 @@ export interface ShoppingListRecord {
   createdAt: string
   updatedAt: string
 }
+
+/** 做饭统计看板聚合结果（PRD §4.3 统计看板） */
+export interface CookingStats {
+  totals: {
+    monthCount: number
+    totalSessions: number
+    totalDishes: number
+    totalPhotos: number
+    avgRating: number | null
+    orderLinkedRatio: number | null
+  }
+  streaks: { currentStreakDays: number; longestStreakDays: number }
+  newDishCount: number
+  thisMonthNewDishes: number
+  topDishes: Array<{ title: string; count: number; recipeId?: string }>
+  mealTypeDist: Record<MealType, number>
+  monthlyTrend: Array<{ month: string; sessions: number }>
+}

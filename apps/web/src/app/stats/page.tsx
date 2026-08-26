@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import type { CookingStats } from '@/app/api/stats/cooking/route'
+import type { CookingStats } from '@kaifan/shared'
 import { MEAL_TYPE_LABELS, MEAL_TYPES, type MealType } from '@kaifan/shared'
 import { useAuth } from '@/components/auth-provider'
 import { PosterModal } from './poster-modal'

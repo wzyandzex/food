@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import type { CookingStats } from '@/app/api/stats/cooking/route'
+import { useEffect, useRef, useState } from 'react'
+import type { CookingStats } from '@kaifan/shared'
 import { renderStatsPoster } from './poster'
 
 interface PosterModalProps {
@@ -14,6 +14,14 @@ export function PosterModal({ stats, nickname, onClose }: PosterModalProps) {
   const [posterUrl, setPosterUrl] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
+
+  // copied 提示的定时器需要在卸载时清理，避免对已卸载组件 setState
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
+    }
+  }, [])
 
   useEffect(() => {
     // 绘制放到下一帧，让 loading 态先渲染
@@ -41,7 +49,7 @@ export function PosterModal({ stats, nickname, onClose }: PosterModalProps) {
       const blob = await (await fetch(posterUrl)).blob()
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
       setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      copiedTimerRef.current = setTimeout(() => setCopied(false), 2000)
     } catch {
       setError('复制失败——长按上方图片选择「保存/分享」即可')
     }
