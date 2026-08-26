@@ -81,12 +81,22 @@ export default function LogsPage() {
           <p className="text-xs text-ink/60">回溯每一顿的温度与味道（仅自己可见）</p>
         </div>
         {user && (
-          <Link
-            href="/logs/new"
-            className="rounded-xl bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm active:scale-95"
-          >
-            + 记一顿
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/stats"
+              className="rounded-xl bg-white px-3 py-2 text-sm shadow-sm active:scale-95"
+              aria-label="统计看板"
+              title="统计看板"
+            >
+              📊
+            </Link>
+            <Link
+              href="/logs/new"
+              className="rounded-xl bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm active:scale-95"
+            >
+              + 记一顿
+            </Link>
+          </div>
         )}
       </header>
 

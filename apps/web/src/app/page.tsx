@@ -111,6 +111,19 @@ export default function HomePage() {
         </Link>
 
         <Link
+          href="/stats"
+          className="block rounded-2xl bg-white p-4 shadow-sm active:scale-[0.99]"
+        >
+          <div className="mb-1 flex items-center justify-between">
+            <h2 className="font-semibold text-sm">📊 统计看板</h2>
+            <span className="rounded-full bg-brand-soft px-2 py-0.5 text-xs font-medium text-brand-deep">
+              数据画像
+            </span>
+          </div>
+          <p className="text-xs text-ink/60">做饭顿次/连续天数/最常做的菜 Top10，一键生成分享海报</p>
+        </Link>
+
+        <Link
           href="/orders"
           className="block rounded-2xl bg-white p-4 shadow-sm active:scale-[0.99]"
         >
