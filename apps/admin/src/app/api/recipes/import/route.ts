@@ -1,9 +1,16 @@
 import { NextResponse } from 'next/server'
-import { parseRecipe, safeParseRecipe, formatRecipeIssues, type RecipeV1 } from '@kaifan/shared'
+import { safeParseRecipe, formatRecipeIssues, type RecipeV1 } from '@kaifan/shared'
 
-import { importRecipe } from '@/lib/recipe-importer'
+import { saveRecipe } from '@/lib/recipe-importer'
 
-/** 校验并导入 JSON 菜谱（单条或数组），返回导入报告 */
+interface ImportItemReport {
+  title: string
+  ok: boolean
+  message: string
+  recipeId?: string
+}
+
+/** 校验并暂存 JSON 菜谱（单条或数组），进入 pending 待确认队列（PRD §4.2 两段式第一段） */
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as unknown
   if (body == null) {
@@ -11,8 +18,8 @@ export async function POST(request: Request) {
   }
 
   const candidates: unknown[] = Array.isArray(body) ? body : [body]
-  const results: { title: string; ok: boolean; message: string }[] = []
-  let importedCount = 0
+  const results: ImportItemReport[] = []
+  let stagedCount = 0
 
   for (const candidate of candidates) {
     const parsed = safeParseRecipe(candidate)
@@ -25,15 +32,21 @@ export async function POST(request: Request) {
       continue
     }
 
-    const recipe: RecipeV1 = parseRecipe(candidate)
-    const result = await importRecipe(recipe)
-    if (result.ok) importedCount += result.importedCount ?? 0
-    results.push({ title: recipe.title, ok: result.ok, message: result.message })
+    // safeParse 成功后直接复用 parsed.data，不进行冗余的二次解析
+    const recipe: RecipeV1 = parsed.data
+    const result = await saveRecipe(recipe, { status: 'pending' })
+    if (result.ok) stagedCount += 1
+    results.push({
+      title: recipe.title,
+      ok: result.ok,
+      message: result.message,
+      recipeId: result.recipeId,
+    })
   }
 
   return NextResponse.json({
-    ok: importedCount > 0,
-    importedCount,
+    ok: stagedCount > 0,
+    stagedCount,
     results,
   })
 }
