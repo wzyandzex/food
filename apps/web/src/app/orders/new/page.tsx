@@ -15,7 +15,7 @@ interface RecipeOption {
 
 export default function NewOrderPage() {
   const router = useRouter()
-  const { user, loading } = useAuth()
+  const { user, loading, getAccessToken } = useAuth()
 
   const [title, setTitle] = useState('今晚想吃什么？大家来点！')
   const [deadlineTime, setDeadlineTime] = useState('18:00')
@@ -75,14 +75,16 @@ export default function NewOrderPage() {
     setError('')
 
     try {
+      const token = await getAccessToken()
+      if (!token) throw new Error('登录状态已失效，请重新登录')
+
       const today = new Date().toISOString().slice(0, 10)
       const deadlineIso = new Date(`${today}T${deadlineTime}:00`).toISOString()
 
       const res = await fetch('/api/orders/create', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          hostId: user.id,
           title: title.trim(),
           deadline: deadlineIso,
           perPersonLimit,

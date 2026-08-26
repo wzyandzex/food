@@ -1,12 +1,17 @@
 import { NextResponse } from 'next/server'
 import { randomBytes } from 'node:crypto'
 
-import { createServerClient } from '@/lib/supabase'
+import { createServerClient, getAuthUserId } from '@/lib/supabase'
 
-/** 发起点单：生成 OrderSession + ShareToken，返回用于分享的短 token */
+/** 发起点单：生成 OrderSession + ShareToken，返回用于分享的短 token。
+ *  发起人身份以 Authorization Bearer 为准，不信任请求体里的 hostId。 */
 export async function POST(request: Request) {
+  const hostId = await getAuthUserId(request)
+  if (!hostId) {
+    return NextResponse.json({ error: '请先登录后再发起点单' }, { status: 401 })
+  }
+
   const body = (await request.json().catch(() => null)) as {
-    hostId?: string
     title?: string
     deadline?: string
     allowFreeInput?: boolean
@@ -14,18 +19,27 @@ export async function POST(request: Request) {
     candidateRecipeIds?: string[]
   } | null
 
-  if (!body?.hostId || !body.title || !body.deadline) {
-    return NextResponse.json({ error: '缺少必填字段（hostId, title, deadline）' }, { status: 400 })
+  if (!body?.title || !body.deadline) {
+    return NextResponse.json({ error: '缺少必填字段（title, deadline）' }, { status: 400 })
+  }
+
+  // 截止时间必须是未来时间且格式合法
+  const deadlineTime = new Date(body.deadline).getTime()
+  if (Number.isNaN(deadlineTime)) {
+    return NextResponse.json({ error: '截止时间格式不正确' }, { status: 400 })
+  }
+  if (deadlineTime <= Date.now()) {
+    return NextResponse.json({ error: '截止时间必须晚于当前时间' }, { status: 400 })
   }
 
   try {
     const supabase = createServerClient()
 
-    // 1. 创建 OrderSession
+    // 1. 创建 OrderSession（host_id 取自已验证身份）
     const { data: sessionData, error: sessionError } = await supabase
       .from('order_sessions')
       .insert({
-        host_id: body.hostId,
+        host_id: hostId,
         title: body.title,
         deadline: body.deadline,
         allow_free_input: body.allowFreeInput ?? false,
@@ -59,6 +73,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, sessionId, token })
   } catch (err) {
+    console.error('发起点单异常：', err)
     return NextResponse.json({ error: `系统异常：${(err as Error).message}` }, { status: 500 })
   }
 }

@@ -1,7 +1,11 @@
+'use client'
+
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
 import { MEAL_TYPE_LABELS, type MealType } from '@kaifan/shared'
 
-import { createServerClient } from '@/lib/supabase'
+import { useAuth } from '@/components/auth-provider'
+import { getBrowserClient, isSupabaseConfigured } from '@/lib/supabase'
 
 interface DishRow {
   snapshot_title: string
@@ -18,24 +22,35 @@ interface CookSessionRow {
   cook_dishes: DishRow[]
 }
 
-async function fetchRecentLogs(): Promise<CookSessionRow[]> {
-  try {
-    const supabase = createServerClient()
-    const { data, error } = await supabase
+export default function LogsPage() {
+  const { user, loading: authLoading } = useAuth()
+  const [logs, setLogs] = useState<CookSessionRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+
+  useEffect(() => {
+    if (authLoading) return
+    if (!user || !isSupabaseConfigured()) {
+      setLoading(false)
+      return
+    }
+
+    // 走 anon key + 登录态，RLS（cook_sessions_owner）只放行本人记录
+    getBrowserClient()
       .from('cook_sessions')
       .select('id, date, meal_type, note, rating, cook_dishes(snapshot_title, photos, adjust_note)')
       .order('date', { ascending: false })
       .limit(30)
-
-    if (error || !data) return []
-    return data as unknown as CookSessionRow[]
-  } catch {
-    return []
-  }
-}
-
-export default async function LogsPage() {
-  const logs = await fetchRecentLogs()
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('做饭日志查询失败：', error.message)
+          setLoadError('日志加载失败，请稍后重试')
+        } else {
+          setLogs((data as unknown as CookSessionRow[]) ?? [])
+        }
+        setLoading(false)
+      })
+  }, [user, authLoading])
 
   return (
     <main className="mx-auto min-h-dvh w-full max-w-md px-5 pt-10 pb-16">
@@ -45,17 +60,37 @@ export default async function LogsPage() {
             ← 返回首页
           </Link>
           <h1 className="text-xl font-bold">做饭日志</h1>
-          <p className="text-xs text-ink/60">回溯每一顿的温度与味道</p>
+          <p className="text-xs text-ink/60">回溯每一顿的温度与味道（仅自己可见）</p>
         </div>
-        <Link
-          href="/logs/new"
-          className="rounded-xl bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm active:scale-95"
-        >
-          + 记一顿
-        </Link>
+        {user && (
+          <Link
+            href="/logs/new"
+            className="rounded-xl bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm active:scale-95"
+          >
+            + 记一顿
+          </Link>
+        )}
       </header>
 
-      {logs.length === 0 ? (
+      {authLoading || loading ? (
+        <p className="rounded-2xl bg-white p-8 text-center text-sm text-ink/50 shadow-sm">加载中…</p>
+      ) : !user ? (
+        <section className="rounded-2xl bg-white p-8 text-center shadow-sm space-y-3">
+          <p className="text-3xl">🔒</p>
+          <h2 className="text-sm font-semibold">登录后查看你的做饭日志</h2>
+          <p className="text-xs text-ink/50 leading-5">做饭记录默认仅自己可见，需要登录身份</p>
+          <Link
+            href="/login"
+            className="inline-block rounded-xl bg-brand px-5 py-2.5 text-xs font-semibold text-white shadow-sm"
+          >
+            去登录 / 注册
+          </Link>
+        </section>
+      ) : loadError ? (
+        <p className="rounded-2xl border border-red-200 bg-red-50 p-4 text-center text-xs text-red-600">
+          {loadError}
+        </p>
+      ) : logs.length === 0 ? (
         <section className="rounded-2xl bg-white p-8 text-center shadow-sm">
           <p className="text-3xl mb-3">🍳</p>
           <h2 className="text-sm font-semibold mb-1">还没有做饭记录</h2>
@@ -89,7 +124,7 @@ export default async function LogsPage() {
 
                 {/* 菜品列表 */}
                 <div className="space-y-2">
-                  {log.cook_dishes.map((dish, idx) => (
+                  {(log.cook_dishes ?? []).map((dish, idx) => (
                     <div key={idx} className="text-xs space-y-1">
                       <div className="font-semibold text-ink/90 flex items-center gap-1.5">
                         <span className="size-1.5 rounded-full bg-brand" />

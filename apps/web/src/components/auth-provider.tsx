@@ -10,6 +10,8 @@ interface AuthContextValue {
   session: Session | null
   loading: boolean
   signOut: () => Promise<void>
+  /** 当前访问令牌：调用需身份的 API 时放进 Authorization Bearer 头 */
+  getAccessToken: () => Promise<string | null>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -53,8 +55,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSession(null)
   }
 
+  const getAccessToken = async (): Promise<string | null> => {
+    try {
+      const { data } = await getBrowserClient().auth.getSession()
+      return data.session?.access_token ?? null
+    } catch {
+      return null
+    }
+  }
+
   return (
-    <AuthContext.Provider value={{ user, session, loading, signOut }}>
+    <AuthContext.Provider value={{ user, session, loading, signOut, getAccessToken }}>
       {children}
     </AuthContext.Provider>
   )

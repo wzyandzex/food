@@ -15,7 +15,7 @@ interface DishDraft {
 
 export default function NewCookLogPage() {
   const router = useRouter()
-  const { user, loading } = useAuth()
+  const { user, loading, getAccessToken } = useAuth()
 
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [mealType, setMealType] = useState<MealType>('dinner')
@@ -45,20 +45,25 @@ export default function NewCookLogPage() {
     setUploadingIndex(index)
     setError('')
     try {
+      const token = await getAccessToken()
+      if (!token) throw new Error('请先登录后再上传图片')
+
       const formData = new FormData()
       formData.append('file', file)
       const res = await fetch('/api/upload/photo', {
         method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
         body: formData,
       })
       const data = (await res.json()) as { url?: string; error?: string }
       if (!res.ok || !data.url) {
         throw new Error(data.error || '上传失败')
       }
-      const current = dishes[index]
-      if (current) {
-        updateDish(index, { photos: [...current.photos, data.url] })
-      }
+      // 函数式更新：避免 await 期间用户编辑被旧快照覆盖
+      const url = data.url
+      setDishes((prev) =>
+        prev.map((d, i) => (i === index ? { ...d, photos: [...d.photos, url] } : d)),
+      )
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -83,11 +88,13 @@ export default function NewCookLogPage() {
     setError('')
 
     try {
+      const token = await getAccessToken()
+      if (!token) throw new Error('登录状态已失效，请重新登录')
+
       const res = await fetch('/api/cook-logs', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          userId: user.id,
           date,
           mealType,
           rating: overallRating,

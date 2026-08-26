@@ -1,8 +1,14 @@
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase'
+import { createServerClient, getAuthUserId } from '@/lib/supabase'
 
-/** 上传菜品成品照片：存到 Supabase Storage 'food-photos' bucket，返回公开 URL */
+/** 上传菜品成品照片：存到 Supabase Storage 'food-photos' bucket，返回公开 URL。
+ *  需已登录（Authorization Bearer），防止匿名滥用存储。 */
 export async function POST(request: Request) {
+  const userId = await getAuthUserId(request)
+  if (!userId) {
+    return NextResponse.json({ error: '请先登录后再上传图片' }, { status: 401 })
+  }
+
   const formData = await request.formData()
   const file = formData.get('file')
   if (!(file instanceof File)) {

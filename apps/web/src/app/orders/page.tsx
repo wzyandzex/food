@@ -1,37 +1,49 @@
+'use client'
+
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
 import { ORDER_SESSION_STATUS_LABELS, type OrderSessionStatus } from '@kaifan/shared'
-import { createServerClient } from '@/lib/supabase'
+
+import { useAuth } from '@/components/auth-provider'
+import { getBrowserClient, isSupabaseConfigured } from '@/lib/supabase'
 
 interface OrderSessionItem {
   id: string
   title: string
   deadline: string
   status: string
-  share_tokens: Array<{ token: string }>
-  order_entries: Array<{
-    orderer_nickname: string
-    items: Array<{ recipeId?: string; freeText?: string; note?: string }>
-  }>
 }
 
-async function fetchHostOrders(): Promise<OrderSessionItem[]> {
-  try {
-    const supabase = createServerClient()
-    const { data, error } = await supabase
+export default function OrdersListPage() {
+  const { user, loading: authLoading } = useAuth()
+  const [orders, setOrders] = useState<OrderSessionItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+
+  useEffect(() => {
+    if (authLoading) return
+    if (!user || !isSupabaseConfigured()) {
+      setLoading(false)
+      return
+    }
+
+    // 走 anon key + 登录态：RLS（order_sessions_host）只放行我发起的会话；
+    // 不查询 share_tokens / order_entries（无 RLS 放行策略，明细进详情页看）
+    getBrowserClient()
       .from('order_sessions')
-      .select('id, title, deadline, status, share_tokens(token), order_entries(orderer_nickname, items)')
+      .select('id, title, deadline, status')
       .order('created_at', { ascending: false })
       .limit(20)
-
-    if (error || !data) return []
-    return data as unknown as OrderSessionItem[]
-  } catch {
-    return []
-  }
-}
-
-export default async function OrdersListPage() {
-  const orders = await fetchHostOrders()
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('点单列表查询失败：', error.message)
+          setLoadError('点单列表加载失败，请稍后重试')
+        } else {
+          setOrders((data as unknown as OrderSessionItem[]) ?? [])
+        }
+        setLoading(false)
+      })
+  }, [user, authLoading])
 
   return (
     <main className="mx-auto min-h-dvh w-full max-w-md px-5 pt-10 pb-16">
@@ -43,15 +55,37 @@ export default async function OrdersListPage() {
           <h1 className="text-xl font-bold">点单广场</h1>
           <p className="text-xs text-ink/60">发起与管理点单会话</p>
         </div>
-        <Link
-          href="/orders/new"
-          className="rounded-xl bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm active:scale-95"
-        >
-          + 发起点单
-        </Link>
+        {user && (
+          <Link
+            href="/orders/new"
+            className="rounded-xl bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm active:scale-95"
+          >
+            + 发起点单
+          </Link>
+        )}
       </header>
 
-      {orders.length === 0 ? (
+      {authLoading || loading ? (
+        <p className="rounded-2xl bg-white p-8 text-center text-sm text-ink/50 shadow-sm">加载中…</p>
+      ) : !user ? (
+        <section className="rounded-2xl bg-white p-8 text-center shadow-sm space-y-3">
+          <p className="text-3xl">🔒</p>
+          <h2 className="text-sm font-semibold">登录后管理你的点单</h2>
+          <p className="text-xs text-ink/50 leading-5">
+            发起点单需要登录身份；参与点菜无需登录（凭分享链接）
+          </p>
+          <Link
+            href="/login"
+            className="inline-block rounded-xl bg-brand px-5 py-2.5 text-xs font-semibold text-white shadow-sm"
+          >
+            去登录 / 注册
+          </Link>
+        </section>
+      ) : loadError ? (
+        <p className="rounded-2xl border border-red-200 bg-red-50 p-4 text-center text-xs text-red-600">
+          {loadError}
+        </p>
+      ) : orders.length === 0 ? (
         <section className="rounded-2xl bg-white p-8 text-center shadow-sm space-y-3">
           <p className="text-3xl">🍲</p>
           <h2 className="text-sm font-semibold">暂无发起的点单</h2>
@@ -68,11 +102,8 @@ export default async function OrdersListPage() {
       ) : (
         <section className="space-y-4">
           {orders.map((order) => {
-            const token = order.share_tokens?.[0]?.token
             const statusLabel =
               ORDER_SESSION_STATUS_LABELS[order.status as OrderSessionStatus] ?? order.status
-
-            const totalEntries = order.order_entries?.length || 0
 
             return (
               <article key={order.id} className="rounded-2xl bg-white p-5 shadow-sm space-y-3">
@@ -85,41 +116,24 @@ export default async function OrdersListPage() {
 
                 <div className="flex items-center justify-between text-xs text-ink/60">
                   <span>
-                    截止：{new Date(order.deadline).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                    截止：
+                    {new Date(order.deadline).toLocaleString('zh-CN', {
+                      month: 'numeric',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
                   </span>
-                  <span>已收到 {totalEntries} 人点单</span>
                 </div>
 
-                {/* 点单人明细汇总 */}
-                {totalEntries > 0 && (
-                  <div className="rounded-xl bg-neutral-50 p-3 text-xs space-y-1.5">
-                    {order.order_entries.map((entry, eIdx) => (
-                      <div key={eIdx} className="flex gap-2">
-                        <span className="font-semibold text-ink/80">{entry.orderer_nickname}:</span>
-                        <span className="text-ink/60">
-                          {entry.items.map((it) => it.freeText || it.recipeId).join('、')}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {token && (
-                  <div className="pt-1 flex gap-2">
-                    <Link
-                      href={`/o/${token}`}
-                      className="flex-1 rounded-lg bg-neutral-100 py-2 text-center text-xs font-medium text-ink/70"
-                    >
-                      查看点单页
-                    </Link>
-                    <Link
-                      href={`/orders/${order.id}`}
-                      className="flex-1 rounded-lg bg-brand-soft py-2 text-center text-xs font-medium text-brand-deep"
-                    >
-                      汇总与采购清单
-                    </Link>
-                  </div>
-                )}
+                <div className="pt-1 flex gap-2">
+                  <Link
+                    href={`/orders/${order.id}`}
+                    className="flex-1 rounded-lg bg-brand-soft py-2 text-center text-xs font-medium text-brand-deep"
+                  >
+                    汇总与采购清单
+                  </Link>
+                </div>
               </article>
             )
           })}

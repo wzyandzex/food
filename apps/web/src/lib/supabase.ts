@@ -30,3 +30,20 @@ export function createServerClient(): SupabaseClient {
     auth: { persistSession: false },
   })
 }
+
+/** 从请求的 Authorization Bearer 中验证用户身份，返回用户 id；无效/缺失返回 null。
+ *  写接口一律以此为准，不信任请求体里的 userId/hostId。 */
+export async function getAuthUserId(request: Request): Promise<string | null> {
+  const header = request.headers.get('authorization') ?? ''
+  const token = header.startsWith('Bearer ') ? header.slice(7).trim() : ''
+  if (!token || !isSupabaseConfigured()) return null
+
+  try {
+    const supabase = createServerClient()
+    const { data, error } = await supabase.auth.getUser(token)
+    if (error || !data.user) return null
+    return data.user.id
+  } catch {
+    return null
+  }
+}

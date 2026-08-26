@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase'
+import { createServerClient, getAuthUserId } from '@/lib/supabase'
 
 interface DishInput {
   recipeId?: string
@@ -9,10 +9,15 @@ interface DishInput {
   adjustNote?: string
 }
 
-/** 保存一顿做饭记录（CookSession + 多道菜 CookDish） */
+/** 保存一顿做饭记录（CookSession + 多道菜 CookDish）。
+ *  身份以 Authorization Bearer 为准，不信任请求体里的 userId。 */
 export async function POST(request: Request) {
+  const userId = await getAuthUserId(request)
+  if (!userId) {
+    return NextResponse.json({ error: '请先登录后再记录' }, { status: 401 })
+  }
+
   const body = (await request.json().catch(() => null)) as {
-    userId?: string
     date?: string
     mealType?: string
     note?: string
@@ -21,22 +26,27 @@ export async function POST(request: Request) {
     dishes?: DishInput[]
   } | null
 
-  if (!body?.userId || !body.date || !body.mealType) {
-    return NextResponse.json({ error: '缺少必填字段（userId, date, mealType）' }, { status: 400 })
+  if (!body?.date || !body.mealType) {
+    return NextResponse.json({ error: '缺少必填字段（date, mealType）' }, { status: 400 })
   }
 
   if (!Array.isArray(body.dishes) || body.dishes.length === 0) {
     return NextResponse.json({ error: '一顿饭至少记录一道菜' }, { status: 400 })
   }
 
+  // rating 范围校验，避免靠 DB check 抛 500
+  if (body.rating != null && (body.rating < 1 || body.rating > 5)) {
+    return NextResponse.json({ error: '评分需在 1-5 星之间' }, { status: 400 })
+  }
+
   try {
     const supabase = createServerClient()
 
-    // 1. 插入顿会话 CookSession
+    // 1. 插入顿会话 CookSession（user_id 取自已验证身份）
     const { data: sessionData, error: sessionError } = await supabase
       .from('cook_sessions')
       .insert({
-        user_id: body.userId,
+        user_id: userId,
         date: body.date,
         meal_type: body.mealType,
         note: body.note || null,
@@ -70,6 +80,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, sessionId })
   } catch (err) {
+    console.error('做饭记录保存异常：', err)
     return NextResponse.json({ error: `系统异常：${(err as Error).message}` }, { status: 500 })
   }
 }
