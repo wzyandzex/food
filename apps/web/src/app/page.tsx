@@ -1,10 +1,35 @@
 'use client'
 
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
 import { useAuth } from '@/components/auth-provider'
 
 export default function HomePage() {
-  const { user, signOut } = useAuth()
+  const { user, signOut, getAccessToken } = useAuth()
+  const [unreadCount, setUnreadCount] = useState(0)
+
+  // 未读通知数：仅登录用户拉取（进入首页时一次）
+  useEffect(() => {
+    if (!user) {
+      setUnreadCount(0)
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const token = await getAccessToken()
+        if (!token) return
+        const res = await fetch('/api/notifications', { headers: { Authorization: `Bearer ${token}` } })
+        const body = (await res.json()) as { unreadCount?: number }
+        if (!cancelled) setUnreadCount(body.unreadCount ?? 0)
+      } catch {
+        // 静默失败，红点保持上一次值
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [user, getAccessToken])
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-5 pt-10 pb-12">
@@ -19,22 +44,38 @@ export default function HomePage() {
           </div>
         </div>
 
-        {user ? (
-          <button
-            type="button"
-            onClick={() => void signOut()}
-            className="rounded-xl bg-white px-3 py-1.5 text-xs text-ink/60 shadow-sm active:scale-95"
-          >
-            退出
-          </button>
-        ) : (
-          <Link
-            href="/login"
-            className="rounded-xl bg-brand px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm active:scale-95"
-          >
-            登录
-          </Link>
-        )}
+        <div className="flex items-center gap-2">
+          {user && (
+            <Link
+              href="/notifications"
+              className="relative rounded-xl bg-white px-2.5 py-1.5 text-base shadow-sm active:scale-95"
+              aria-label="消息中心"
+            >
+              🔔
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 flex min-w-4.5 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
+            </Link>
+          )}
+          {user ? (
+            <button
+              type="button"
+              onClick={() => void signOut()}
+              className="rounded-xl bg-white px-3 py-1.5 text-xs text-ink/60 shadow-sm active:scale-95"
+            >
+              退出
+            </button>
+          ) : (
+            <Link
+              href="/login"
+              className="rounded-xl bg-brand px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm active:scale-95"
+            >
+              登录
+            </Link>
+          )}
+        </div>
       </header>
 
       <section className="mb-6 rounded-2xl bg-white p-4 text-xs leading-5 text-ink/75 shadow-sm">

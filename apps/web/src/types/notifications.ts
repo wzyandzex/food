@@ -1,0 +1,18 @@
+export interface NotificationRow {
+  id: string
+  user_id: string
+  type: string
+  title: string
+  body: string
+  url: string | null
+  payload: Record<string, unknown>
+  read_at: string | null
+  created_at: string
+}
+
+export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
+  order_arrived: '🍲 新点单',
+  order_status: '👨‍🍳 状态变更',
+  order_deadline: '⏰ 截单提醒',
+  system: '📣 系统',
+}

@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
+import { ORDER_SESSION_STATUS_LABELS, type OrderSessionStatus } from '@kaifan/shared'
 import { createServerClient, getAuthUserId } from '@/lib/supabase'
+import { sendNotificationToUser } from '@/lib/push-notifications'
 
 type OrderStatus = 'open' | 'closed' | 'cooking' | 'done' | 'canceled'
 
@@ -60,6 +62,35 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     if (updateError) {
       return NextResponse.json({ error: `状态更新失败：${updateError.message}` }, { status: 500 })
+    }
+
+    // 通知所有已绑定身份的点单人（M2 通知中心）
+    try {
+      const { data: participants } = await supabase
+        .from('order_entries')
+        .select('orderer_user_id')
+        .eq('order_session_id', id)
+        .not('orderer_user_id', 'is', null)
+
+      const userIds = Array.from(
+        new Set((participants ?? []).map((row) => row.orderer_user_id as string).filter(Boolean)),
+      )
+
+      if (userIds.length > 0) {
+        const statusLabel = ORDER_SESSION_STATUS_LABELS[nextStatus as OrderSessionStatus] ?? nextStatus
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        void Promise.all(userIds.map((uid) =>
+          sendNotificationToUser(supabase, {
+            userId: uid,
+            type: 'order_status',
+            title: `👨‍🍳 点单状态更新为「${statusLabel}」`,
+            body: `您参与的一场点单状态发生变化，点击查看详情`,
+            url: `/orders/participated/${id}`,
+          }),
+        ))
+      }
+    } catch (notifyError) {
+      console.error('点单状态变更通知失败：', notifyError)
     }
 
     return NextResponse.json({ ok: true, status: nextStatus })

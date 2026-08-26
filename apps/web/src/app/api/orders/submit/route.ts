@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
+import { sendNotificationToUser } from '@/lib/push-notifications'
 
 interface OrderItemInput {
   recipeId?: string
@@ -74,6 +75,34 @@ export async function POST(request: Request) {
 
     if (upsertError) {
       return NextResponse.json({ error: `提交点单失败：${upsertError.message}` }, { status: 500 })
+    }
+
+    // 3. 通知发起人（M2 通知中心：站内 + Web Push）
+    try {
+      const { data: sessionRow } = await supabase
+        .from('order_sessions')
+        .select('host_id, title')
+        .eq('id', tokenData.order_session_id)
+        .single()
+
+      const dishNames = body.items
+        .map((item) => item.freeText || item.recipeId)
+        .filter(Boolean)
+        .join('、')
+
+      const host = sessionRow as { host_id: string; title: string } | null
+      if (host) {
+        void sendNotificationToUser(supabase, {
+          userId: host.host_id,
+          type: 'order_arrived',
+          title: `🍲 ${body.nickname.trim()} 提交了点单`,
+          body: `「${host.title}」新点单动态：${dishNames || '有新的点菜'}`,
+          url: `/orders/${tokenData.order_session_id}`,
+        })
+      }
+    } catch (notifyError) {
+      // 通知发送失败不影响主流程
+      console.error('点单到达通知发送失败：', notifyError)
     }
 
     return NextResponse.json({ ok: true })
