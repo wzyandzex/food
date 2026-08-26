@@ -44,8 +44,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '点单链接已过期或已失效' }, { status: 400 })
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const session = tokenData.order_sessions as any
+    const session = tokenData.order_sessions as unknown as {
+      status: string
+      deadline: string
+    } | null
     if (session?.status !== 'open') {
       return NextResponse.json({ error: '该点单已截单或已结束' }, { status: 400 })
     }

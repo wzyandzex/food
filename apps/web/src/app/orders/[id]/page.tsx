@@ -21,6 +21,7 @@ interface OrderDetailPayload {
   status: string
   entries: Array<{ nickname: string; items: OrderItemLike[] }>
   ingredientsSummary: Array<{ name: string; qty: number; unit: string }>
+  recipeTitles: Record<string, string>
   shareToken: string | null
 }
 
@@ -237,7 +238,7 @@ export default function OrderSummaryPage() {
                     <div className="text-xs text-ink/70 mt-1 pl-2 space-y-0.5">
                       {entry.items.map((it, itIdx) => (
                         <div key={itIdx}>
-                          🍽️ {it.freeText || it.recipeId}
+                          🍽️ {it.freeText || data.recipeTitles[it.recipeId ?? ''] || '（已下架菜谱）'}
                           {(it.servings ?? 1) > 1 && (
                             <span className="font-semibold text-brand-deep"> ×{it.servings}</span>
                           )}{' '}

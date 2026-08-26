@@ -15,6 +15,8 @@ interface OrderDetailPayload {
   status: string
   entries: Array<{ nickname: string; items: OrderItemLike[] }>
   ingredientsSummary: Array<{ name: string; qty: number; unit: string }>
+  /** recipeId → 菜谱名（用于明细展示，避免裸 UUID） */
+  recipeTitles: Record<string, string>
   /** 当前有效的分享 token（仅发起人可见） */
   shareToken: string | null
 }
@@ -112,6 +114,18 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       .limit(1)
       .maybeSingle()
 
+    // 点单明细里被点菜谱的 id → 菜名映射（避免页面展示裸 UUID）
+    const recipeTitles: Record<string, string> = {}
+    if (recipeIdList.length > 0) {
+      const { data: titleRows } = await supabase
+        .from('recipes')
+        .select('id, title')
+        .in('id', recipeIdList)
+      for (const row of (titleRows ?? []) as Array<{ id: string; title: string }>) {
+        recipeTitles[row.id] = row.title
+      }
+    }
+
     const payload: OrderDetailPayload = {
       id: session.id,
       title: session.title,
@@ -119,6 +133,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       status: session.status,
       entries,
       ingredientsSummary,
+      recipeTitles,
       shareToken: tokenRow?.token ?? null,
     }
 

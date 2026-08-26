@@ -27,6 +27,27 @@ interface OrderSessionOption {
   status: string
 }
 
+/** 客户端压缩（PRD §9）：长边 ≤1600px、WebP ≈200KB；小图或压缩失败时退回原图 */
+async function compressImage(file: File): Promise<Blob> {
+  if (file.size <= 200 * 1024) return file
+  try {
+    const bitmap = await createImageBitmap(file)
+    const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(bitmap.width * scale)
+    canvas.height = Math.round(bitmap.height * scale)
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return file
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, 'image/webp', 0.8),
+    )
+    return blob && blob.size < file.size ? blob : file
+  } catch {
+    return file
+  }
+}
+
 export default function NewCookLogPage() {
   const router = useRouter()
   const { user, loading, getAccessToken } = useAuth()
@@ -92,8 +113,9 @@ export default function NewCookLogPage() {
       const token = await getAccessToken()
       if (!token) throw new Error('请先登录后再上传图片')
 
+      const compressed = await compressImage(file)
       const formData = new FormData()
-      formData.append('file', file)
+      formData.append('file', compressed, compressed instanceof File ? compressed.name : 'photo.webp')
       const res = await fetch('/api/upload/photo', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
@@ -109,7 +131,9 @@ export default function NewCookLogPage() {
         prev.map((d, i) => (i === index ? { ...d, photos: [...d.photos, url] } : d)),
       )
     } catch (err) {
-      setError((err as Error).message)
+      // 弱网降级（PRD §6.7）：照片上传失败不阻塞记录本身，先落库文字部分
+      const message = (err as Error).message
+      setError(`${message}。已跳过这张照片，你可以先保存这条记录，稍后重新上传`)
     } finally {
       setUploadingIndex(null)
     }
