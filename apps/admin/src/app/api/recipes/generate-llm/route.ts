@@ -91,7 +91,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: '菜名列表为空' }, { status: 400 })
   }
 
-  const useLlm = isLlmConfigured()
+  const useLlm = await isLlmConfigured()
   const results: { title: string; ok: boolean; message: string; recipeId?: string }[] = []
   let stagedCount = 0
 
@@ -123,7 +123,7 @@ export async function POST(request: Request) {
     results.push({
       title: name,
       ok: result.ok,
-      message: useLlm ? result.message : `${result.message}（未配置 LLM_API_KEY，当前为模板数据）`,
+      message: useLlm ? result.message : `${result.message}（未配置 LLM API Key，当前为本地模板数据）`,
       recipeId: result.recipeId,
     })
   }
@@ -138,5 +138,5 @@ export async function POST(request: Request) {
 }
 
 function llmConfigHint(): string {
-  return '当前使用本地模板生成（不是真实 AI）。配置 LLM_API_KEY 后将自动切换为真实大模型生成。'
+  return '当前使用本地模板生成。前往「⚙️ 系统设置」填入 API Key 与端点后将自动切换为真实大模型。'
 }

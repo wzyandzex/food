@@ -17,7 +17,7 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 /** OCR 图片导入：视觉模型识别菜谱照片（书本/手写/截图）→ recipe.v1 → 暂存待审核 */
 export async function POST(request: Request) {
-  if (!isLlmConfigured()) {
+  if (!(await isLlmConfigured())) {
     return NextResponse.json({ error: llmConfigError() }, { status: 503 })
   }
 

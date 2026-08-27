@@ -63,7 +63,7 @@ async function parseExtractionResult(
 }
 
 export async function POST(request: Request) {
-  if (!isLlmConfigured()) {
+  if (!(await isLlmConfigured())) {
     return NextResponse.json({ error: llmConfigError() }, { status: 503 })
   }
 

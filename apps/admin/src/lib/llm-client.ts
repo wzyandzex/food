@@ -1,17 +1,61 @@
-/** OpenAI 兼容协议的轻量 LLM 客户端（零 SDK 依赖）。
- *  默认指向智谱开放平台免费模型：文本 glm-4-flash / 视觉 glm-4v-flash；
- *  换任何 OpenAI 兼容端点只需改环境变量。 */
+import { getAdminClient } from '@/lib/supabase'
 
-const LLM_API_BASE_URL = (process.env.LLM_API_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4').replace(/\/+$/, '')
-const LLM_MODEL = process.env.LLM_MODEL || 'glm-4-flash'
-const LLM_VISION_MODEL = process.env.LLM_VISION_MODEL || 'glm-4v-flash'
+export interface ResolvedLlmConfig {
+  baseUrl: string
+  apiKey: string
+  model: string
+  visionModel: string
+  source: 'db' | 'env' | 'none'
+}
 
-export function isLlmConfigured(): boolean {
-  return Boolean(process.env.LLM_API_KEY)
+/** 动态解析 LLM 配置：优先从 Supabase system_settings 读取，未填则回落 process.env */
+export async function getResolvedLlmConfig(): Promise<ResolvedLlmConfig> {
+  let dbKey = ''
+  let dbBaseUrl = ''
+  let dbModel = ''
+  let dbVisionModel = ''
+
+  try {
+    const supabase = getAdminClient()
+    const { data } = await supabase
+      .from('system_settings')
+      .select('key, value')
+      .in('key', ['llm_api_key', 'llm_base_url', 'llm_model', 'llm_vision_model'])
+
+    if (data && Array.isArray(data)) {
+      for (const row of data) {
+        if (row.key === 'llm_api_key') dbKey = (row.value ?? '').trim()
+        if (row.key === 'llm_base_url') dbBaseUrl = (row.value ?? '').trim()
+        if (row.key === 'llm_model') dbModel = (row.value ?? '').trim()
+        if (row.key === 'llm_vision_model') dbVisionModel = (row.value ?? '').trim()
+      }
+    }
+  } catch {
+    // 数据库未配置或表尚未执行迁移时，静默回落环境变量
+  }
+
+  const apiKey = dbKey || (process.env.LLM_API_KEY ?? '').trim()
+  const rawBaseUrl = dbBaseUrl || process.env.LLM_API_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4'
+  const baseUrl = rawBaseUrl.replace(/\/+$/, '')
+  const model = dbModel || process.env.LLM_MODEL || 'glm-4-flash'
+  const visionModel = dbVisionModel || process.env.LLM_VISION_MODEL || model || 'glm-4v-flash'
+
+  return {
+    baseUrl,
+    apiKey,
+    model,
+    visionModel,
+    source: dbKey ? 'db' : apiKey ? 'env' : 'none',
+  }
+}
+
+export async function isLlmConfigured(): Promise<boolean> {
+  const config = await getResolvedLlmConfig()
+  return Boolean(config.apiKey)
 }
 
 export function llmConfigError(): string {
-  return 'LLM 未配置：请在管理端环境变量中设置 LLM_API_KEY（可选 LLM_API_BASE_URL / LLM_MODEL / LLM_VISION_MODEL，推荐智谱 glm-4-flash 与 glm-4v-flash 免费模型）'
+  return 'LLM 未配置：请在管理端「⚙️ 系统设置」页面或 Vercel 环境变量中配置 API Key'
 }
 
 interface ChatMessageText {
@@ -19,7 +63,6 @@ interface ChatMessageText {
   content: string
 }
 
-/** 视觉消息：content 支持图文混排（image_url 为 http(s) 或 dataURL） */
 export interface ChatMessageVision {
   role: 'user'
   content: Array<
@@ -34,25 +77,29 @@ export interface ChatOptions {
   model?: string
   jsonMode?: boolean
   timeoutMs?: number
+  isVision?: boolean
 }
 
-/** 执行一次对话补全，返回首个 choice 的文本内容 */
+/** 执行一次对话补全：自动加载最新动态配置并调用 OpenAI 兼容端点 */
 export async function chatCompletion(messages: ChatMessage[], options: ChatOptions = {}): Promise<string> {
-  const apiKey = process.env.LLM_API_KEY
-  if (!apiKey) throw new Error(llmConfigError())
+  const config = await getResolvedLlmConfig()
+  if (!config.apiKey) throw new Error(llmConfigError())
+
+  const targetModel =
+    options.model || (options.isVision ? config.visionModel : config.model) || config.model
 
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 45_000)
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 55_000)
 
   try {
-    const response = await fetch(`${LLM_API_BASE_URL}/chat/completions`, {
+    const response = await fetch(`${config.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${config.apiKey}`,
       },
       body: JSON.stringify({
-        model: options.model ?? LLM_MODEL,
+        model: targetModel,
         messages,
         temperature: 0.2,
         ...(options.jsonMode ? { response_format: { type: 'json_object' } } : {}),
@@ -62,7 +109,7 @@ export async function chatCompletion(messages: ChatMessage[], options: ChatOptio
 
     if (!response.ok) {
       const detail = await response.text().catch(() => '')
-      throw new Error(`LLM 请求失败（HTTP ${response.status}）：${detail.slice(0, 200)}`)
+      throw new Error(`LLM 请求失败（HTTP ${response.status}，模型: ${targetModel}）：${detail.slice(0, 250)}`)
     }
 
     const body = (await response.json()) as {
@@ -71,7 +118,7 @@ export async function chatCompletion(messages: ChatMessage[], options: ChatOptio
     return body.choices?.[0]?.message?.content ?? ''
   } catch (err) {
     if ((err as Error).name === 'AbortError') {
-      throw new Error('LLM 请求超时，请稍后重试或换用更快的模型')
+      throw new Error('LLM 请求超时（55 秒），请检查网络或第三方 API 响应速度')
     }
     throw err
   } finally {
@@ -79,11 +126,10 @@ export async function chatCompletion(messages: ChatMessage[], options: ChatOptio
   }
 }
 
-/** 从模型输出中稳健地提取 JSON 对象（容忍 ```json 围栏与前后噪声文本） */
+/** 从模型输出中稳健地提取 JSON 对象 */
 export function extractJson(raw: string): Record<string, unknown> | null {
   const trimmed = raw.trim()
 
-  // 直接解析
   try {
     return JSON.parse(trimmed) as Record<string, unknown>
   } catch {
@@ -95,7 +141,7 @@ export function extractJson(raw: string): Record<string, unknown> | null {
     try {
       return JSON.parse(fenceMatch[1].trim()) as Record<string, unknown>
     } catch {
-      // 落到花括号兜底
+      // 降级到花括号截取
     }
   }
 

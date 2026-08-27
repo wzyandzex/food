@@ -25,6 +25,12 @@ export default function AdminHomePage() {
             导入菜谱
           </Link>
           <Link
+            href="/settings"
+            className="rounded-lg border border-neutral-300 bg-white px-3.5 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 shadow-sm"
+          >
+            ⚙️ 系统设置
+          </Link>
+          <Link
             href="/login"
             className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white"
           >
