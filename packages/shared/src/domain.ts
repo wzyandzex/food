@@ -73,6 +73,9 @@ export interface CookingStats {
     totalPhotos: number
     avgRating: number | null
     orderLinkedRatio: number | null
+    /** 本月按菜谱每份估算的摄入热量（关联了菜谱且有营养数据的顿才计入） */
+    monthCalories?: number | null
+    totalCalories?: number | null
   }
   streaks: { currentStreakDays: number; longestStreakDays: number }
   newDishCount: number

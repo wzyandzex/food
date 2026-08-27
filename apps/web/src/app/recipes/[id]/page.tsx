@@ -19,14 +19,16 @@ interface StepLike {
   durationMinutes?: number
 }
 
-async function fetchRecipe(id: string): Promise<RecipeV1 | null> {
+async function fetchRecipe(
+  id: string,
+): Promise<{ recipe: RecipeV1; meta: { id: string; derivedFromId: string | null; derivedFromTitle: string | null } } | null> {
   if (!isSupabaseConfigured()) return null
 
   const supabase = createServerClient()
   const { data, error } = await supabase
     .from('recipes')
     .select(
-      'title, cover_url, servings, difficulty, minutes, tags, nutrition, steps, source_type, source_url, ai_generated, recipe_ingredients(qty, unit, optional, ingredients(name))',
+      'id, title, cover_url, servings, difficulty, minutes, tags, nutrition, steps, source_type, source_url, ai_generated, derived_from, author_note, recipe_ingredients(qty, unit, optional, ingredients(name))',
     )
     .eq('id', id)
     .eq('status', 'published')
@@ -40,6 +42,7 @@ async function fetchRecipe(id: string): Promise<RecipeV1 | null> {
   if (!data) return null
 
   const row = data as unknown as {
+    id: string
     title: string
     cover_url: string | null
     servings: number
@@ -51,31 +54,51 @@ async function fetchRecipe(id: string): Promise<RecipeV1 | null> {
     source_type: string
     source_url: string | null
     ai_generated: boolean
+    derived_from: string | null
+    author_note: string | null
     recipe_ingredients: IngredientRow[]
   }
 
+  // 若有改编来源，查一次父本标题做溯源展示
+  let derivedFromTitle: string | null = null
+  if (row.derived_from) {
+    const { data: parent } = await supabase
+      .from('recipes')
+      .select('title')
+      .eq('id', row.derived_from)
+      .maybeSingle()
+    derivedFromTitle = (parent as { title?: string } | null)?.title ?? null
+  }
+
   return {
-    schemaVersion: 'recipe.v1' as const,
-    title: row.title,
-    cover: row.cover_url ?? undefined,
-    servings: row.servings,
-    difficulty: row.difficulty,
-    minutes: row.minutes,
-    tags: row.tags,
-    ingredients: row.recipe_ingredients.map((item) => ({
-      name: item.ingredients?.name ?? '',
-      qty: item.qty ?? undefined,
-      unit: item.unit ?? undefined,
-      optional: item.optional,
-    })),
-    steps: row.steps.map((step, index) => ({
-      text: step.text ?? `步骤 ${index + 1}`,
-      durationMinutes: step.durationMinutes,
-    })),
-    nutrition: row.nutrition ?? undefined,
-    sourceType: row.source_type as RecipeV1['sourceType'],
-    sourceUrl: row.source_url ?? undefined,
-    authorNote: row.ai_generated ? 'AI 生成，仅供参考' : undefined,
+    recipe: {
+      schemaVersion: 'recipe.v1' as const,
+      title: row.title,
+      cover: row.cover_url ?? undefined,
+      servings: row.servings,
+      difficulty: row.difficulty,
+      minutes: row.minutes,
+      tags: row.tags,
+      ingredients: row.recipe_ingredients.map((item) => ({
+        name: item.ingredients?.name ?? '',
+        qty: item.qty ?? undefined,
+        unit: item.unit ?? undefined,
+        optional: item.optional,
+      })),
+      steps: row.steps.map((step, index) => ({
+        text: step.text ?? `步骤 ${index + 1}`,
+        durationMinutes: step.durationMinutes,
+      })),
+      nutrition: row.nutrition ?? undefined,
+      sourceType: row.source_type as RecipeV1['sourceType'],
+      sourceUrl: row.source_url ?? undefined,
+      authorNote: row.author_note ?? (row.ai_generated ? 'AI 生成，仅供参考' : undefined),
+    },
+    meta: {
+      id: row.id,
+      derivedFromId: row.derived_from,
+      derivedFromTitle,
+    },
   }
 }
 
@@ -87,10 +110,10 @@ export default async function RecipeDetailPage({
   const { id } = await params
   const decodedId = decodeURIComponent(id)
 
-  const recipe = (await fetchRecipe(decodedId)) ??
-    SAMPLE_RECIPES.find((sample) => sample.title === decodedId) ??
-    null
+  const dbData = await fetchRecipe(decodedId)
+  const sample = SAMPLE_RECIPES.find((s) => s.title === decodedId)
 
+  const recipe: RecipeV1 | null = dbData?.recipe ?? sample ?? null
   if (!recipe) notFound()
 
   return (
@@ -136,8 +159,13 @@ export default async function RecipeDetailPage({
         )}
       </header>
 
-      {/* 交互区：食材勾选、步骤进度、营养、署名 */}
-      <RecipeDetailInteractive recipe={recipe} />
+      {/* 交互区：食材勾选、步骤进度、营养、署名、改编按钮、溯源 */}
+      <RecipeDetailInteractive
+        recipe={recipe}
+        recipeId={dbData?.meta.id}
+        derivedFromId={dbData?.meta.derivedFromId}
+        derivedFromTitle={dbData?.meta.derivedFromTitle}
+      />
     </main>
   )
 }

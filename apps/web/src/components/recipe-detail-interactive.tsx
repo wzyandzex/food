@@ -7,9 +7,17 @@ import { useAuth } from '@/components/auth-provider'
 
 interface RecipeDetailInteractiveProps {
   recipe: RecipeV1
+  recipeId?: string
+  derivedFromTitle?: string | null
+  derivedFromId?: string | null
 }
 
-export function RecipeDetailInteractive({ recipe }: RecipeDetailInteractiveProps) {
+export function RecipeDetailInteractive({
+  recipe,
+  recipeId,
+  derivedFromTitle,
+  derivedFromId,
+}: RecipeDetailInteractiveProps) {
   const { user, getAccessToken } = useAuth()
   // 本地交互态：食材勾选「家里有」
   const [haveIngredients, setHaveIngredients] = useState<Record<number, boolean>>({})
@@ -155,7 +163,7 @@ export function RecipeDetailInteractive({ recipe }: RecipeDetailInteractiveProps
           })}
         </ul>
 
-        {/* 存入购物清单按钮 */}
+        {/* 存入购物清单按钮 + 改编按钮 */}
         <div className="mt-4 pt-3 border-t border-neutral-100 flex flex-col gap-2">
           {addError && <p className="text-xs text-red-500">{addError}</p>}
           {addedSuccess ? (
@@ -166,14 +174,24 @@ export function RecipeDetailInteractive({ recipe }: RecipeDetailInteractiveProps
               </Link>
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={handleAddToShoppingList}
-              disabled={addingToShoppingList}
-              className="w-full rounded-xl bg-brand-soft py-2 text-center text-xs font-semibold text-brand-deep active:scale-98 disabled:opacity-50"
-            >
-              {addingToShoppingList ? '正在添加…' : '🛒 将未有食材一键加入购物清单'}
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleAddToShoppingList}
+                disabled={addingToShoppingList}
+                className="flex-1 rounded-xl bg-brand-soft py-2.5 text-center text-xs font-semibold text-brand-deep active:scale-98 disabled:opacity-50"
+              >
+                {addingToShoppingList ? '正在添加…' : '🛒 缺的进清单'}
+              </button>
+              {recipeId && (
+                <Link
+                  href={`/recipes/${encodeURIComponent(recipeId)}/fork`}
+                  className="flex-1 rounded-xl bg-neutral-100 py-2.5 text-center text-xs font-semibold text-ink/80 active:scale-98"
+                >
+                  ✍️ 改编此菜谱
+                </Link>
+              )}
+            </div>
           )}
         </div>
       </section>
@@ -264,11 +282,24 @@ export function RecipeDetailInteractive({ recipe }: RecipeDetailInteractiveProps
       )}
 
       {/* 来源与作者署名（PRD §4.2） */}
-      {(recipe.sourceUrl || recipe.sourceType || recipe.authorNote) && (
+      {(recipe.sourceUrl || recipe.sourceType || recipe.authorNote || derivedFromTitle) && (
         <footer className="space-y-1.5 rounded-2xl bg-neutral-50 p-4 text-xs text-ink/60">
+          {derivedFromTitle && (
+            <p className="font-semibold text-brand-deep">
+              ✍️ 本菜谱改编自《
+              {derivedFromId ? (
+                <Link href={`/recipes/${encodeURIComponent(derivedFromId)}`} className="underline">
+                  {derivedFromTitle}
+                </Link>
+              ) : (
+                derivedFromTitle
+              )}
+              》
+            </p>
+          )}
           {recipe.authorNote && <p className="font-medium text-ink/80">{recipe.authorNote}</p>}
           <div className="flex flex-wrap items-center gap-2">
-            <span>来源渠道：{recipe.sourceType}</span>
+            <span>来源渠道：{recipe.sourceType === 'user' ? '用户原创/改编' : recipe.sourceType}</span>
             {recipe.sourceUrl && (
               <>
                 <span>·</span>

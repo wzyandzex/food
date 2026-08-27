@@ -180,6 +180,25 @@ export default function StatsPage() {
         ))}
       </section>
 
+      {/* 热量参考（PRD §4.2 健身/饮食管理） */}
+      {(stats.totals.monthCalories != null || stats.totals.totalCalories != null) && (
+        <section className="mb-4 rounded-2xl bg-white p-4 shadow-sm text-xs space-y-1">
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-ink">🔥 估算摄入热量</span>
+            <span className="text-[10px] text-ink/45">按关联菜谱每份标称估算</span>
+          </div>
+          <p className="text-ink/75 leading-5">
+            {stats.totals.monthCalories != null && (
+              <span>本月约 <strong className="text-brand-deep font-bold">{stats.totals.monthCalories}</strong> kcal</span>
+            )}
+            {stats.totals.monthCalories != null && stats.totals.totalCalories != null && <span> · </span>}
+            {stats.totals.totalCalories != null && (
+              <span>全程累计约 <strong className="text-brand-deep font-bold">{stats.totals.totalCalories}</strong> kcal</span>
+            )}
+          </p>
+        </section>
+      )}
+
       {/* 月度趋势柱状图（纯 CSS） */}
       {showTrend && (
         <section className="mb-4 rounded-2xl bg-white p-5 shadow-sm">

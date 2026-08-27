@@ -117,6 +117,14 @@ export function renderStatsPoster(stats: CookingStats, nickname: string): string
   }
 
   // ===== 水印底部 =====
+  if (stats.totals.monthCalories != null && stats.totals.monthCalories > 0) {
+    ctx.fillStyle = INK_SOFT
+    ctx.font = '28px "PingFang SC", "Microsoft YaHei", sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText(`本月做饭约摄入 ${stats.totals.monthCalories} kcal（按菜谱标称估算）`, 540, 1250)
+    ctx.textAlign = 'left'
+  }
+
   ctx.fillStyle = BRAND
   roundRect(ctx, 60, 1280, 960, 90, 32)
   ctx.fill()

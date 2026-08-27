@@ -18,7 +18,7 @@
     { "text": "补少许油，下西红柿翻炒出汁，加盐和糖调味", "durationMinutes": 3 },
     { "text": "倒回鸡蛋翻炒均匀，撒葱花出锅", "durationMinutes": 1 }
   ],
-  "nutrition": { "calories": 180 },
+  "nutrition": { "calories": 180, "protein": 9, "fat": 11, "carbs": 12 },
   "sourceType": "llm",
   "authorNote": "AI 生成样例，已人工校验"
 }

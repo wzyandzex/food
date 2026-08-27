@@ -21,6 +21,7 @@
     { "text": "下豆瓣酱、豆豉炒出红油，加甜面酱炒匀", "durationMinutes": 2 },
     { "text": "下蒜苗断生即出锅", "durationMinutes": 1 }
   ],
+  "nutrition": { "calories": 420, "protein": 24, "fat": 33, "carbs": 8 },
   "sourceType": "llm",
   "authorNote": "AI 生成样例，已人工校验"
 }

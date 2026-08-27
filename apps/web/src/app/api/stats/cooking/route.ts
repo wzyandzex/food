@@ -131,6 +131,42 @@ export async function GET(request: Request) {
     const newDishCount = dishCounter.size
     const thisMonthNewDishes = Array.from(firstSeenMonth.values()).filter((m) => m === thisMonthPrefix).length
 
+    // ===== 热量估算：dish→菜谱每份 calories 累计（PRD §4.2 健身人群口径）=====
+    let totalCalories: number | null = null
+    let monthCalories: number | null = null
+    const referencedRecipeIds = new Set(
+      dishes.map((d) => d.recipe_id).filter((id): id is string => Boolean(id)),
+    )
+    if (referencedRecipeIds.size > 0) {
+      const { data: nutritionRows, error: nutritionError } = await supabase
+        .from('recipes')
+        .select('id, nutrition->>calories')
+        .in('id', Array.from(referencedRecipeIds))
+
+      if (nutritionError) throw new Error(nutritionError.message)
+
+      const caloriesByRecipe = new Map<string, number>()
+      for (const row of (nutritionRows ?? []) as Array<{ id: string; calories: string | number | null }>) {
+        const kcal = typeof row.calories === 'string' ? Number(row.calories) : row.calories
+        if (typeof kcal === 'number' && kcal > 0) caloriesByRecipe.set(row.id, kcal)
+      }
+
+      if (caloriesByRecipe.size > 0) {
+        let total = 0
+        let monthTotal = 0
+        for (const dish of dishes) {
+          if (!dish.recipe_id) continue
+          const kcal = caloriesByRecipe.get(dish.recipe_id)
+          if (kcal == null) continue
+          total += kcal
+          const dishMonth = sessionIdToDate.get(dish.session_id)?.slice(0, 7)
+          if (dishMonth === thisMonthPrefix) monthTotal += kcal
+        }
+        totalCalories = total
+        monthCalories = monthTotal
+      }
+    }
+
     // ===== 餐次分布 =====
     const mealTypeDist: Record<MealType, number> = { breakfast: 0, lunch: 0, dinner: 0, supper: 0 }
     for (const s of sessions) {
@@ -166,6 +202,8 @@ export async function GET(request: Request) {
         totalPhotos: dishes.reduce((sum, d) => sum + (Array.isArray(d.photos) ? d.photos.length : 0), 0),
         avgRating: ratings.length > 0 ? Number((ratings.reduce((a, b) => a + b, 0) / ratings.length).toFixed(1)) : null,
         orderLinkedRatio: sessions.length > 0 ? Number((orderLinked / sessions.length).toFixed(2)) : null,
+        monthCalories,
+        totalCalories,
       },
       streaks: { currentStreakDays: current, longestStreakDays: longest },
       newDishCount,

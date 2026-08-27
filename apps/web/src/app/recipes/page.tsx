@@ -62,12 +62,20 @@ export default async function RecipesPage() {
 
   return (
     <main className="mx-auto min-h-dvh w-full max-w-md px-5 pt-12 pb-10">
-      <header className="mb-6">
-        <Link href="/" className="mb-2 inline-block text-sm text-ink/50">
-          ← 返回首页
+      <header className="mb-6 flex items-start justify-between gap-3">
+        <div>
+          <Link href="/" className="mb-2 inline-block text-sm text-ink/50">
+            ← 返回首页
+          </Link>
+          <h1 className="text-xl font-bold">菜谱市场</h1>
+          <p className="text-sm text-ink/60">搜索、自建与改编菜谱</p>
+        </div>
+        <Link
+          href="/recipes/new"
+          className="mt-6 rounded-xl bg-brand px-3.5 py-2 text-xs font-semibold text-white shadow-sm active:scale-95 shrink-0"
+        >
+          + 自建菜谱
         </Link>
-        <h1 className="text-xl font-bold">菜谱市场</h1>
-        <p className="text-sm text-ink/60">搜索、收藏与自建菜谱</p>
       </header>
 
       <section className="space-y-3">
