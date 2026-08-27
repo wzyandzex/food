@@ -34,15 +34,17 @@ export async function GET() {
 
 /** 审核动作：对指定待确认菜谱进行「发布」或「驳回」
  *  - action='publish' → status 校验合法迁移置为 'published'
- *  - action='reject'  → 软删除或级联清理并记录操作审计 */
+ *  - action='reject'  → 软删除并更新为 'rejected' 状态，记录操作审计（DATA_MODEL.md §2.1 & SECURITY_AUDIT.md §4） */
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as {
     recipeId?: unknown
     action?: unknown
+    reason?: unknown
   } | null
 
   const recipeId = typeof body?.recipeId === 'string' ? body.recipeId.trim() : ''
   const action = typeof body?.action === 'string' ? body.action.trim() : ''
+  const reason = typeof body?.reason === 'string' ? body.reason.trim() : undefined
 
   if (!recipeId) {
     return NextResponse.json({ error: '缺少 recipeId' }, { status: 400 })
@@ -92,18 +94,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, message: '已发布并上架菜谱市场' })
   }
 
-  // action === 'reject'：彻底清除暂存记录
-  const { error } = await supabase.from('recipes').delete().eq('id', recipeId).eq('status', 'pending')
+  // action === 'reject'：执行软删除与状态更新，完整保留操作审计轨迹
+  const { error } = await supabase
+    .from('recipes')
+    .update({
+      status: 'rejected',
+      deleted_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', recipeId)
+    .eq('status', 'pending')
+
   if (error) {
-    return NextResponse.json({ error: `驳回清理失败：${error.message}` }, { status: 500 })
+    return NextResponse.json({ error: `驳回操作失败：${error.message}` }, { status: 500 })
   }
 
   await logAdminAction({
     action: 'recipe.reject',
     resourceType: 'recipe',
     resourceId: recipeId,
-    metadata: { title: recipe.title },
+    metadata: { title: recipe.title, reason },
   })
 
-  return NextResponse.json({ ok: true, message: '已驳回并清理暂存数据' })
+  return NextResponse.json({ ok: true, message: '已驳回并归档暂存数据' })
 }
