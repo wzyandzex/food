@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { safeParseRecipe, formatRecipeIssues } from '@kaifan/shared'
+import { safeParseRecipe, formatRecipeIssues, safeFetch } from '@kaifan/shared'
 
 import { saveRecipe } from '@/lib/recipe-importer'
 import { htmlToText, isLikelyUsefulText } from '@/lib/html-text'
@@ -15,22 +15,6 @@ import {
 } from '@/lib/extraction-prompts'
 
 export const maxDuration = 60
-
-/** SSRF 防护：拒绝内网/环回/链路本地地址 */
-function isBlockedHost(hostname: string): boolean {
-  return (
-    hostname === 'localhost' ||
-    hostname.endsWith('.local') ||
-    /^127\./.test(hostname) ||
-    /^10\./.test(hostname) ||
-    /^192\.168\./.test(hostname) ||
-    /^169\.254\./.test(hostname) ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
-    hostname === '0.0.0.0' ||
-    hostname === '::1' ||
-    hostname === '[::1]'
-  )
-}
 
 interface ExtractedRecipe extends Record<string, unknown> {
   notRecipe?: boolean
@@ -70,66 +54,23 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as { url?: unknown } | null
   const url = typeof body?.url === 'string' ? body.url.trim() : ''
 
-  let parsedUrl: URL
-  try {
-    parsedUrl = new URL(url)
-  } catch {
-    return NextResponse.json({ error: 'URL 格式不合法' }, { status: 400 })
-  }
-  if ((parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') || isBlockedHost(parsedUrl.hostname)) {
-    return NextResponse.json({ error: '仅支持公网 http(s) 链接' }, { status: 400 })
-  }
-
-  // 抓取页面
+  // 1. 安全抓取页面 (内置 DNS 解析、SSRF 拦截、重定向 IP 检测、体积与超时限制)
   let html: string
   try {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 15_000)
-    const response = await fetch(parsedUrl.toString(), {
+    const response = await safeFetch(url, {
+      timeoutMs: 15_000,
+      maxContentLength: 1024 * 1024, // 1MB
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
         Accept: 'text/html,application/xhtml+xml',
         'Accept-Language': 'zh-CN,zh;q=0.9',
       },
-      redirect: 'follow',
-      signal: controller.signal,
     })
-    clearTimeout(timer)
-
-    if (!response.ok) {
-      return NextResponse.json({ error: `页面抓取失败（HTTP ${response.status}），该链接可能需要登录或已失效` }, { status: 400 })
-    }
-
-    const contentType = response.headers.get('content-type') ?? ''
-    if (!contentType.includes('html') && !contentType.includes('text')) {
-      return NextResponse.json({ error: `链接内容类型为 ${contentType.split(';')[0]}，不是网页文本` }, { status: 400 })
-    }
-
-    // 限制读取大小（1MB 足够覆盖正文）
-    const reader = response.body?.getReader()
-    if (!reader) {
-      html = await response.text()
-    } else {
-      const chunks: Uint8Array[] = []
-      let received = 0
-      for (;;) {
-        const { done, value } = await reader.read()
-        if (done) break
-        chunks.push(value)
-        received += value.length
-        if (received > 1024 * 1024) {
-          void reader.cancel()
-          break
-        }
-      }
-      html = new TextDecoder('utf-8').decode(concatChunks(chunks))
-    }
-  } catch (err) {
-    if ((err as Error).name === 'AbortError') {
-      return NextResponse.json({ error: '页面抓取超时（15 秒），站点可能不可达' }, { status: 504 })
-    }
-    return NextResponse.json({ error: `页面抓取失败：${(err as Error).message}` }, { status: 502 })
+    html = await response.text()
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    return NextResponse.json({ error: `安全抓取失败：${message}` }, { status: 400 })
   }
 
   const text = htmlToText(html)
@@ -140,7 +81,7 @@ export async function POST(request: Request) {
     )
   }
 
-  // LLM 抽取
+  // 2. LLM 抽取
   const messages = [
     { role: 'system' as const, content: RECIPE_EXTRACTION_SYSTEM_PROMPT },
     buildExtractionUserPrompt(text),
@@ -164,7 +105,7 @@ export async function POST(request: Request) {
   // 强制署名与来源标记
   extracted.schemaVersion = 'recipe.v1'
   extracted.sourceType = 'url'
-  extracted.sourceUrl = parsedUrl.toString()
+  extracted.sourceUrl = url
 
   const validation = safeParseRecipe(extracted)
   if (!validation.success) {
@@ -189,15 +130,4 @@ export async function POST(request: Request) {
     },
     message: `${result.message}（已署名原文链接）`,
   })
-}
-
-function concatChunks(chunks: Uint8Array[]): Uint8Array {
-  const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0)
-  const merged = new Uint8Array(total)
-  let offset = 0
-  for (const chunk of chunks) {
-    merged.set(chunk, offset)
-    offset += chunk.length
-  }
-  return merged
 }

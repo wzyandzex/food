@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
-
+import { isValidRecipeTransition } from '@kaifan/shared'
 import { getAdminClient } from '@/lib/supabase'
+import { logAdminAction } from '@/lib/audit-logger'
 
 interface PendingRecipeItem {
   id: string
@@ -32,8 +33,8 @@ export async function GET() {
 }
 
 /** 审核动作：对指定待确认菜谱进行「发布」或「驳回」
- *  - action='publish' → status 置为 'published'
- *  - action='reject'  → 级联删除 recipe 记录（recipe_ingredients 级联删） */
+ *  - action='publish' → status 校验合法迁移置为 'published'
+ *  - action='reject'  → 软删除或级联清理并记录操作审计 */
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as {
     recipeId?: unknown
@@ -52,16 +53,42 @@ export async function POST(request: Request) {
 
   const supabase = getAdminClient()
 
+  // 1. 检查当前菜谱状态与迁移合法性
+  const { data: recipe, error: fetchError } = await supabase
+    .from('recipes')
+    .select('id, title, status')
+    .eq('id', recipeId)
+    .single()
+
+  if (fetchError || !recipe) {
+    return NextResponse.json({ error: '菜谱不存在或已处理' }, { status: 404 })
+  }
+
+  const targetStatus = action === 'publish' ? 'published' : 'rejected'
+  if (!isValidRecipeTransition(recipe.status, targetStatus) && recipe.status !== 'pending') {
+    return NextResponse.json(
+      { error: `非法状态流转：无法从 ${recipe.status} 流转至 ${targetStatus}` },
+      { status: 400 },
+    )
+  }
+
   if (action === 'publish') {
     const { error } = await supabase
       .from('recipes')
       .update({ status: 'published', updated_at: new Date().toISOString() })
       .eq('id', recipeId)
-      .eq('status', 'pending')
 
     if (error) {
       return NextResponse.json({ error: `发布失败：${error.message}` }, { status: 500 })
     }
+
+    await logAdminAction({
+      action: 'recipe.publish',
+      resourceType: 'recipe',
+      resourceId: recipeId,
+      metadata: { title: recipe.title, previousStatus: recipe.status },
+    })
+
     return NextResponse.json({ ok: true, message: '已发布并上架菜谱市场' })
   }
 
@@ -70,5 +97,13 @@ export async function POST(request: Request) {
   if (error) {
     return NextResponse.json({ error: `驳回清理失败：${error.message}` }, { status: 500 })
   }
+
+  await logAdminAction({
+    action: 'recipe.reject',
+    resourceType: 'recipe',
+    resourceId: recipeId,
+    metadata: { title: recipe.title },
+  })
+
   return NextResponse.json({ ok: true, message: '已驳回并清理暂存数据' })
 }

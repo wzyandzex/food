@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server'
+import type { RecipeSnapshot } from '@kaifan/shared'
 import { createServerClient, getAuthUserId } from '@/lib/supabase'
 
 interface DishInput {
   recipeId?: string
   snapshotTitle: string
   snapshotCover?: string
+  recipeSnapshot?: RecipeSnapshot
   photos?: string[]
   adjustNote?: string
 }
@@ -62,15 +64,30 @@ export async function POST(request: Request) {
 
     const sessionId = sessionData.id as string
 
-    // 2. 插入每道菜 CookDish（含快照抗删除）
-    const dishRows = body.dishes.map((d) => ({
-      session_id: sessionId,
-      recipe_id: d.recipeId || null,
-      snapshot_title: d.snapshotTitle,
-      snapshot_cover: d.snapshotCover || null,
-      photos: d.photos || [],
-      adjust_note: d.adjustNote || null,
-    }))
+    // 2. 插入每道菜 CookDish（含完整历史 JSONB 快照，抗菜谱修改与物理软删）
+    const dishRows = body.dishes.map((d) => {
+      const snapshot: RecipeSnapshot = d.recipeSnapshot || {
+        id: d.recipeId,
+        title: d.snapshotTitle,
+        coverUrl: d.snapshotCover || null,
+        servings: 2,
+        difficulty: 2,
+        minutes: 30,
+        ingredients: [],
+        steps: [],
+        snapshotAt: new Date().toISOString(),
+      }
+
+      return {
+        session_id: sessionId,
+        recipe_id: d.recipeId || null,
+        snapshot_title: d.snapshotTitle,
+        snapshot_cover: d.snapshotCover || null,
+        recipe_snapshot: snapshot,
+        photos: d.photos || [],
+        adjust_note: d.adjustNote || null,
+      }
+    })
 
     const { error: dishError } = await supabase.from('cook_dishes').insert(dishRows)
 

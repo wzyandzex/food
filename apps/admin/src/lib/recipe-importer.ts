@@ -11,6 +11,7 @@ export interface SaveRecipeResult {
   ok: boolean
   message: string
   recipeId?: string
+  id?: string
 }
 
 /** 事务性写入单条 recipe.v1：写 recipes → upsert ingredients → 写 recipe_ingredients。
@@ -90,6 +91,7 @@ export async function saveRecipe(
     ok: true,
     message: status === 'pending' ? `已暂存「${recipe.title}」（待确认）` : `已发布「${recipe.title}」`,
     recipeId,
+    id: recipeId,
   }
 }
 
