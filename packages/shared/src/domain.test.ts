@@ -4,6 +4,7 @@ import {
   isValidRecipeTransition,
   isValidOrderTransition,
   isPrivateIp,
+  validateSafeUrl,
 } from './index.ts'
 
 describe('Domain State Machine Transitions', () => {
@@ -45,9 +46,23 @@ describe('SSRF & Private IP Protection', () => {
     assert.equal(isPrivateIp('1.1.1.1'), false) // 公网 IP
   })
 
+  it('should identify obfuscated/hex/octal representations as private/unsafe', () => {
+    assert.equal(isPrivateIp('0177.0.0.1'), true)
+    assert.equal(isPrivateIp('0x7f000001'), true)
+    assert.equal(isPrivateIp('2130706433'), true)
+  })
+
   it('should identify IPv6 loopback and private addresses', () => {
     assert.equal(isPrivateIp('::1'), true)
     assert.equal(isPrivateIp('fe80::1'), true)
     assert.equal(isPrivateIp('fc00::1'), true)
+    assert.equal(isPrivateIp('::ffff:127.0.0.1'), true)
+  })
+
+  it('should reject unsafe or private URLs in validateSafeUrl', async () => {
+    await assert.rejects(async () => validateSafeUrl('http://127.0.0.1/admin'))
+    await assert.rejects(async () => validateSafeUrl('http://localhost:3000'))
+    await assert.rejects(async () => validateSafeUrl('http://169.254.169.254/latest/meta-data/'))
+    await assert.rejects(async () => validateSafeUrl('http://0x7f.1/test'))
   })
 })
