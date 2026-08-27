@@ -14,7 +14,7 @@ function hashToken(raw: string): string {
   return createHash('sha256').update(raw).digest('hex')
 }
 
-/** 访客/好友提交点单（支持完全免登录，基于 participantToken / clientKey 双重幂等隔离） */
+/** 访客/好友提交点单（支持完全免登录，基于 participantToken / clientKey 强哈希隔离） */
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as {
     token?: string
@@ -66,9 +66,10 @@ export async function POST(request: Request) {
     }
 
     const sessionId = tokenData.order_session_id as string
+    // 单向 SHA-256 哈希处理（SECURITY_AUDIT.md §2 规定杜绝明文凭证入库）
     const tokenHash = hashToken(rawKey)
 
-    // 2. 维护或创建匿名参与者实体 OrderParticipant
+    // 2. 维护或创建匿名参与者实体 OrderParticipant（基于 tokenHash）
     const { data: participantData } = await supabase
       .from('order_participants')
       .upsert(
@@ -87,12 +88,12 @@ export async function POST(request: Request) {
 
     const participantId = participantData?.id as string | undefined
 
-    // 3. 幂等 upsert 点单明细；先探测是首次提交还是覆盖修改（PRD §6.2）
+    // 3. 幂等 upsert 点单明细；基于 tokenHash 进行既存记录匹配与防重判断
     const { data: existingEntry } = await supabase
       .from('order_entries')
       .select('id')
       .eq('order_session_id', sessionId)
-      .eq('client_key', rawKey)
+      .eq('client_key', tokenHash)
       .maybeSingle()
     const isFirstSubmission = !existingEntry
 
@@ -104,7 +105,7 @@ export async function POST(request: Request) {
           participant_id: participantId || null,
           orderer_nickname: body.nickname.trim(),
           orderer_user_id: body.userId || null,
-          client_key: rawKey,
+          client_key: tokenHash,
           items: body.items,
           updated_at: new Date().toISOString(),
         },
