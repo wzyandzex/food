@@ -95,16 +95,16 @@ export default async function HomePage() {
 
         {picks.length === 0 ? (
           <div className="rounded-xl bg-surface p-6 text-center space-y-3">
-            <p className="text-[14px] font-medium text-ink">还没有录入菜谱</p>
-            <p className="text-[12px] leading-5 text-ink-3">
-              自建一道拿手菜，或在管理端导入常用菜谱
+            <p className="text-[15px] font-semibold text-ink">还没有录入菜谱</p>
+            <p className="text-[13px] leading-5 text-ink-3">
+              添加属于你的第一道拿手菜，开启专属每日菜单
             </p>
             <Link
               href="/recipes/new"
-              className="inline-flex items-center gap-1 rounded-lg bg-tint px-3.5 py-1.5 text-[12px] font-semibold text-white active:opacity-70"
+              className="inline-flex items-center gap-1 rounded-xl bg-tint px-4 py-2 text-[13px] font-semibold text-white active:opacity-70"
             >
-              <IconPlus className="size-3.5" />
-              <span>自建第一道菜</span>
+              <IconPlus className="size-4" />
+              <span>添加第一道菜</span>
             </Link>
           </div>
         ) : (

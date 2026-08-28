@@ -81,9 +81,16 @@ export default async function RecipesPage() {
 
       {/* 菜谱分组列表 */}
       {recipes.length === 0 ? (
-        <div className="card px-6 py-12 text-center">
-          <p className="text-[15px] font-medium text-ink">还没有菜谱</p>
-          <p className="mt-1 text-[13px] text-ink-3">点击右上角自建第一道拿手菜，或在管理端导入</p>
+        <div className="card px-6 py-12 text-center space-y-3">
+          <p className="text-[15px] font-semibold text-ink">还没有菜谱</p>
+          <p className="text-[13px] text-ink-3 leading-5">添加你的专属拿手菜，后续做饭、排餐、点单都能直接调用</p>
+          <Link
+            href="/recipes/new"
+            className="inline-flex items-center gap-1 rounded-xl bg-tint px-4 py-2 text-[13px] font-semibold text-white active:opacity-70"
+          >
+            <IconPlus className="size-4" />
+            <span>自建第一道菜</span>
+          </Link>
         </div>
       ) : (
         <div className="list-group">
