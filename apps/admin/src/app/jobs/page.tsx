@@ -1,21 +1,51 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import type { RecipeSourceType } from '@kaifan/shared'
 import {
-  Layers,
   FileCode,
-  FileSpreadsheet,
   Globe,
   Sparkles,
-  Camera,
   RotateCw,
-  AlertCircle,
-  CheckCircle,
-  Clock,
   ChevronRight,
 } from 'lucide-react'
 
 type ImportTab = 'llm' | 'url' | 'ocr' | 'json' | 'excel'
+
+export interface DbImportJob {
+  id: string
+  type: RecipeSourceType
+  status: 'pending' | 'running' | 'succeeded' | 'partial_success' | 'failed' | 'canceled'
+  total: number
+  completed: number
+  succeeded: number
+  failed: number
+  payload?: Record<string, unknown>
+  created_by?: string | null
+  started_at?: string | null
+  completed_at?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DbImportJobItem {
+  id: string
+  job_id: string
+  input?: Record<string, unknown>
+  status: 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled'
+  attempt: number
+  max_attempts: number
+  result?: Record<string, unknown> | null
+  error_code?: string | null
+  error_message?: string | null
+  recipe_id?: string | null
+  created_at: string
+}
+
+interface JobDetailPayload {
+  job: DbImportJob
+  items: DbImportJobItem[]
+}
 
 export default function JobsPage() {
   const [activeTab, setActiveTab] = useState<ImportTab>('llm')
@@ -24,21 +54,20 @@ export default function JobsPage() {
   const [llmDishNames, setLlmDishNames] = useState('')
   const [url, setUrl] = useState('')
   const [jsonText, setJsonText] = useState('')
-  const [file, setFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
-  // 任务列表状态
-  const [jobs, setJobs] = useState<any[]>([])
+  // 任务列表状态（强类型化，消除 any）
+  const [jobs, setJobs] = useState<DbImportJob[]>([])
   const [loadingJobs, setLoadingJobs] = useState(false)
-  const [selectedJob, setSelectedJob] = useState<any | null>(null)
+  const [selectedJob, setSelectedJob] = useState<JobDetailPayload | null>(null)
 
   const fetchJobs = async () => {
     setLoadingJobs(true)
     try {
       const res = await fetch('/api/jobs?limit=15')
       if (res.ok) {
-        const data = await res.json()
+        const data = (await res.json()) as { jobs?: DbImportJob[] }
         setJobs(data.jobs || [])
       }
     } catch {
@@ -61,7 +90,7 @@ export default function JobsPage() {
 
     try {
       let items: Array<Record<string, unknown>> = []
-      let type = activeTab
+      let type: RecipeSourceType = 'llm'
 
       if (activeTab === 'llm') {
         const names = llmDishNames
@@ -74,7 +103,7 @@ export default function JobsPage() {
           return
         }
         items = names.map((name) => ({ title: name }))
-        type = 'llm_batch' as any
+        type = 'llm'
       } else if (activeTab === 'url') {
         if (!url.trim()) {
           setMessage({ type: 'error', text: '请输入目标菜谱 URL' })
@@ -82,9 +111,11 @@ export default function JobsPage() {
           return
         }
         items = [{ url: url.trim() }]
+        type = 'url'
       } else if (activeTab === 'json') {
         const parsed = JSON.parse(jsonText)
         items = Array.isArray(parsed) ? parsed : [parsed]
+        type = 'json'
       } else {
         setMessage({ type: 'error', text: '该类型暂请直接通过旧版导入上传' })
         setSubmitting(false)
@@ -97,8 +128,8 @@ export default function JobsPage() {
         body: JSON.stringify({ action: 'create', type, items }),
       })
 
-      const data = await res.json()
-      if (res.ok) {
+      const data = (await res.json()) as { ok?: boolean; jobId?: string; error?: string }
+      if (res.ok && data.jobId) {
         setMessage({ type: 'success', text: `任务已创建排队 (ID: ${data.jobId.slice(0, 8)})` })
         setLlmDishNames('')
         setUrl('')
@@ -133,7 +164,7 @@ export default function JobsPage() {
     try {
       const res = await fetch(`/api/jobs?id=${jobId}`)
       if (res.ok) {
-        const data = await res.json()
+        const data = (await res.json()) as JobDetailPayload
         setSelectedJob(data)
       }
     } catch (err) {
@@ -374,15 +405,15 @@ export default function JobsPage() {
               </button>
             </div>
             <div className="p-4 overflow-y-auto flex-1 divide-y divide-neutral-100">
-              {selectedJob.items.map((item: any) => (
+              {selectedJob.items.map((item: DbImportJobItem) => (
                 <div key={item.id} className="py-2.5 flex items-center justify-between text-xs">
                   <div>
                     <div className="font-medium text-neutral-800">
-                      {item.input.title || item.input.url || '子任务项'}
+                      {String(item.input?.title || item.input?.url || '子任务项')}
                     </div>
                     {item.error_message && (
                       <div className="text-[11px] text-red-500 mt-0.5">
-                        [{item.error_code}] {item.error_message}
+                        [{item.error_code || 'ERROR'}] {item.error_message}
                       </div>
                     )}
                   </div>

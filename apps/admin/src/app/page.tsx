@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { getAdminClient } from '@/lib/supabase'
+import { getAdminClient, isAdminSupabaseConfigured } from '@/lib/supabase'
 import {
   UtensilsCrossed,
   Clock,
@@ -43,7 +43,37 @@ interface DashboardStats {
   }>
 }
 
+interface RawDbJob {
+  id: string
+  type: string
+  status: string
+  total: number
+  succeeded: number
+  failed: number
+  created_at: string
+}
+
+interface RawDbAudit {
+  id: string
+  action: string
+  resource_type: string
+  created_at: string
+}
+
 async function fetchDashboardData(): Promise<DashboardStats> {
+  if (!isAdminSupabaseConfigured()) {
+    return {
+      totalRecipes: 0,
+      pendingRecipes: 0,
+      runningJobs: 0,
+      failedJobs: 0,
+      totalCookSessions: 0,
+      systemHealth: { db: false, ai: false, storage: false, jobs: false },
+      recentJobs: [],
+      recentAudits: [],
+    }
+  }
+
   const supabase = getAdminClient()
   try {
     const [recipesRes, pendingRes, runningJobsRes, failedJobsRes, cookRes, recentJobsRes, auditsRes] =
@@ -57,6 +87,9 @@ async function fetchDashboardData(): Promise<DashboardStats> {
         supabase.from('admin_audit_logs').select('id, action, resource_type, created_at').order('created_at', { ascending: false }).limit(6),
       ])
 
+    const typedJobs = (recentJobsRes.data || []) as unknown as RawDbJob[]
+    const typedAudits = (auditsRes.data || []) as unknown as RawDbAudit[]
+
     return {
       totalRecipes: recipesRes.count ?? 0,
       pendingRecipes: pendingRes.count ?? 0,
@@ -69,7 +102,7 @@ async function fetchDashboardData(): Promise<DashboardStats> {
         storage: true,
         jobs: !runningJobsRes.error,
       },
-      recentJobs: (recentJobsRes.data || []).map((j: any) => ({
+      recentJobs: typedJobs.map((j) => ({
         id: j.id,
         type: j.type,
         status: j.status,
@@ -78,7 +111,7 @@ async function fetchDashboardData(): Promise<DashboardStats> {
         failed: j.failed,
         createdAt: j.created_at,
       })),
-      recentAudits: (auditsRes.data || []).map((a: any) => ({
+      recentAudits: typedAudits.map((a) => ({
         id: a.id,
         action: a.action,
         resourceType: a.resource_type,
@@ -99,169 +132,230 @@ async function fetchDashboardData(): Promise<DashboardStats> {
   }
 }
 
-export default async function AdminDashboardPage() {
-  const data = await fetchDashboardData()
+export default async function AdminHomePage() {
+  const stats = await fetchDashboardData()
 
   return (
     <div className="space-y-8">
-      {/* 顶部标题区 */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">运营概况看板</h1>
-          <p className="text-sm text-neutral-500 mt-1">
-            实时监控系统核心指标、内容审核工单与后台异步导入队列
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Link
-            href="/jobs"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm"
-          >
-            <Layers className="w-4 h-4" />
-            <span>新建导入任务</span>
-          </Link>
-          <Link
-            href="/review"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-white hover:bg-neutral-50 border border-neutral-200 text-neutral-700 rounded-lg text-sm font-medium transition-colors shadow-sm"
-          >
-            <Clock className="w-4 h-4 text-amber-600" />
-            <span>待审工单 ({data.pendingRecipes})</span>
-          </Link>
-        </div>
+      {/* 顶部标题 */}
+      <div>
+        <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">运营中控总览 (Command Center)</h1>
+        <p className="text-sm text-neutral-500 mt-1">
+          开饭 KaiFan 统一内容与任务调度后台 · 掌控全域菜谱、异步流水、审核流与服务健康度
+        </p>
       </div>
 
-      {/* 第一层：关键指标卡片 */}
+      {/* 核心指标 KPI */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-xl border border-neutral-200/80 shadow-xs">
           <div className="flex items-center justify-between text-neutral-500">
-            <span className="text-xs font-medium uppercase tracking-wider">已上架菜谱</span>
-            <UtensilsCrossed className="w-4 h-4 text-neutral-400" />
+            <span className="text-xs font-semibold uppercase tracking-wider">已上架菜谱</span>
+            <UtensilsCrossed className="w-4 h-4 text-emerald-600" />
           </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-neutral-900">{data.totalRecipes}</span>
-            <span className="text-xs text-neutral-400">道</span>
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-xl border border-neutral-200/80 shadow-xs">
-          <div className="flex items-center justify-between text-neutral-500">
-            <span className="text-xs font-medium uppercase tracking-wider">待审核工单</span>
-            <Clock className="w-4 h-4 text-amber-500" />
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-amber-600">{data.pendingRecipes}</span>
-            <span className="text-xs text-neutral-400">项需人工确认</span>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl font-bold text-neutral-900">{stats.totalRecipes}</span>
+            <span className="text-xs text-neutral-400">公开可用</span>
           </div>
         </div>
 
         <div className="bg-white p-5 rounded-xl border border-neutral-200/80 shadow-xs">
           <div className="flex items-center justify-between text-neutral-500">
-            <span className="text-xs font-medium uppercase tracking-wider">运行中异步任务</span>
-            <Layers className="w-4 h-4 text-blue-500" />
+            <span className="text-xs font-semibold uppercase tracking-wider">待人工审核</span>
+            <Clock className="w-4 h-4 text-amber-600" />
           </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-neutral-900">{data.runningJobs}</span>
-            <span className="text-xs text-neutral-400">个任务处理中</span>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl font-bold text-amber-600">{stats.pendingRecipes}</span>
+            <span className="text-xs text-neutral-400">需确认入库</span>
           </div>
         </div>
 
         <div className="bg-white p-5 rounded-xl border border-neutral-200/80 shadow-xs">
           <div className="flex items-center justify-between text-neutral-500">
-            <span className="text-xs font-medium uppercase tracking-wider">异常失败任务</span>
-            <AlertCircle className={`w-4 h-4 ${data.failedJobs > 0 ? 'text-red-500' : 'text-neutral-400'}`} />
+            <span className="text-xs font-semibold uppercase tracking-wider">运行中任务</span>
+            <Layers className="w-4 h-4 text-blue-600" />
           </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className={`text-2xl font-bold ${data.failedJobs > 0 ? 'text-red-600' : 'text-neutral-900'}`}>
-              {data.failedJobs}
-            </span>
-            <span className="text-xs text-neutral-400">个任务待重试</span>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl font-bold text-neutral-900">{stats.runningJobs}</span>
+            <span className="text-xs text-neutral-400">异步队列中</span>
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-xl border border-neutral-200/80 shadow-xs">
+          <div className="flex items-center justify-between text-neutral-500">
+            <span className="text-xs font-semibold uppercase tracking-wider">做饭记录总数</span>
+            <Activity className="w-4 h-4 text-purple-600" />
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl font-bold text-neutral-900">{stats.totalCookSessions}</span>
+            <span className="text-xs text-neutral-400">顿活跃留存</span>
           </div>
         </div>
       </div>
 
-      {/* 第二层：运营待办事项 */}
-      {(data.pendingRecipes > 0 || data.failedJobs > 0) && (
-        <div className="bg-amber-50/60 border border-amber-200 rounded-xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
-              <AlertCircle className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="font-semibold text-amber-950 text-sm">运营待办事项提醒</div>
-              <div className="text-xs text-amber-800/80 mt-0.5">
-                当前有 <span className="font-bold">{data.pendingRecipes}</span> 篇待审菜谱等待处理；
-                {data.failedJobs > 0 && <span> 有 <span className="font-bold">{data.failedJobs}</span> 个失败导入任务需要关注；</span>}
+      {/* 系统就绪监控与快捷动作 */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* 系统健康监控 */}
+        <div className="bg-white p-6 rounded-xl border border-neutral-200/80 shadow-xs space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold text-neutral-900">核心服务可用性 (Ready State)</h2>
+            <span className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              在线运行
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <div className="p-3 rounded-lg bg-neutral-50 border border-neutral-100 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-neutral-700">
+                <Database className="w-4 h-4 text-neutral-500" />
+                <span>Supabase DB</span>
               </div>
+              {stats.systemHealth.db ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              ) : (
+                <XCircle className="w-4 h-4 text-red-500" />
+              )}
+            </div>
+
+            <div className="p-3 rounded-lg bg-neutral-50 border border-neutral-100 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-neutral-700">
+                <Cpu className="w-4 h-4 text-neutral-500" />
+                <span>LLM 提取内核</span>
+              </div>
+              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+            </div>
+
+            <div className="p-3 rounded-lg bg-neutral-50 border border-neutral-100 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-neutral-700">
+                <HardDrive className="w-4 h-4 text-neutral-500" />
+                <span>OSS 照片存储</span>
+              </div>
+              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+            </div>
+
+            <div className="p-3 rounded-lg bg-neutral-50 border border-neutral-100 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-neutral-700">
+                <Layers className="w-4 h-4 text-neutral-500" />
+                <span>异步任务调度</span>
+              </div>
+              {stats.systemHealth.jobs ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              ) : (
+                <XCircle className="w-4 h-4 text-red-500" />
+              )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {data.pendingRecipes > 0 && (
-              <Link
-                href="/review"
-                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium rounded-md shadow-xs transition"
-              >
-                处理审核
-              </Link>
-            )}
-            {data.failedJobs > 0 && (
-              <Link
-                href="/jobs?status=failed"
-                className="px-3 py-1.5 bg-white border border-amber-300 text-amber-900 hover:bg-amber-50 text-xs font-medium rounded-md shadow-xs transition"
-              >
-                查看失败项
-              </Link>
-            )}
+
+          <div className="pt-2 border-t border-neutral-100 text-xs text-neutral-400">
+            Node.js 24 / Next.js 15 App Router · 启用 SSRF 拦截与 CAS 任务调度防死锁
           </div>
         </div>
-      )}
 
-      {/* 第三层与第四层：最近导入任务 + 系统健康度 */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* 左侧 2 列：最近任务流水 */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-neutral-200/80 shadow-xs overflow-hidden">
-          <div className="px-5 py-4 border-b border-neutral-100 flex items-center justify-between">
-            <div className="font-semibold text-sm text-neutral-900">最近导入任务</div>
-            <Link href="/jobs" className="text-xs text-amber-600 hover:underline flex items-center gap-1">
-              <span>查看全部任务</span>
+        {/* 快捷审核与待办 */}
+        <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-neutral-200/80 shadow-xs space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold text-neutral-900">运营行动项 (Actions Required)</h2>
+            <Link
+              href="/review"
+              className="text-xs text-amber-700 hover:text-amber-800 font-medium flex items-center gap-1"
+            >
+              <span>前往审核中心</span>
               <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
-          <div className="divide-y divide-neutral-100">
-            {data.recentJobs.length === 0 ? (
-              <div className="py-8 text-center text-xs text-neutral-400">暂无导入任务</div>
+
+          {stats.pendingRecipes > 0 ? (
+            <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-200/80 flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="space-y-1 text-xs">
+                <div className="font-semibold text-amber-900">
+                  有 {stats.pendingRecipes} 条新生成的菜谱等待人工审定
+                </div>
+                <p className="text-amber-700 leading-relaxed">
+                  大模型调研或批量导入的数据已安全隔离在待确认队列中，上架前请核验食材计量与步骤完整性。
+                </p>
+                <div className="pt-1">
+                  <Link
+                    href="/review"
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium transition"
+                  >
+                    立即审核并上架
+                  </Link>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="p-8 text-center text-neutral-400 text-xs rounded-xl bg-neutral-50/50 border border-neutral-100">
+              当前暂无积压待审内容，所有管线运转顺畅。
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 text-xs">
+            <Link
+              href="/jobs"
+              className="p-2.5 rounded-lg border border-neutral-200 hover:border-neutral-900 transition flex items-center justify-between text-neutral-700"
+            >
+              <span>创建批量任务</span>
+              <ArrowRight className="w-3 h-3 text-neutral-400" />
+            </Link>
+            <Link
+              href="/recipes"
+              className="p-2.5 rounded-lg border border-neutral-200 hover:border-neutral-900 transition flex items-center justify-between text-neutral-700"
+            >
+              <span>浏览公共库</span>
+              <ArrowRight className="w-3 h-3 text-neutral-400" />
+            </Link>
+            <Link
+              href="/users"
+              className="p-2.5 rounded-lg border border-neutral-200 hover:border-neutral-900 transition flex items-center justify-between text-neutral-700"
+            >
+              <span>用户准入管理</span>
+              <ArrowRight className="w-3 h-3 text-neutral-400" />
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      {/* 底部双列：近期异步任务流水 + 操作审计记录 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* 近期异步流水 */}
+        <div className="bg-white rounded-xl border border-neutral-200/80 shadow-xs overflow-hidden">
+          <div className="px-5 py-4 border-b border-neutral-100 flex items-center justify-between">
+            <span className="font-semibold text-sm text-neutral-900">近期批量任务流水</span>
+            <Link href="/jobs" className="text-xs text-neutral-500 hover:text-neutral-900">
+              全部任务 →
+            </Link>
+          </div>
+          <div className="divide-y divide-neutral-100 text-xs">
+            {stats.recentJobs.length === 0 ? (
+              <div className="p-6 text-center text-neutral-400">暂无任务记录</div>
             ) : (
-              data.recentJobs.map((job) => (
-                <div key={job.id} className="p-4 flex items-center justify-between hover:bg-neutral-50/60 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <span className="px-2 py-0.5 rounded text-[11px] font-mono uppercase bg-neutral-100 text-neutral-700">
-                      {job.type}
-                    </span>
-                    <div>
-                      <div className="text-xs font-medium text-neutral-900">
-                        批次 {job.id.slice(0, 8)}
-                      </div>
-                      <div className="text-[11px] text-neutral-400 mt-0.5">
-                        {new Date(job.createdAt).toLocaleString('zh-CN')}
-                      </div>
+              stats.recentJobs.map((job) => (
+                <div key={job.id} className="p-4 flex items-center justify-between hover:bg-neutral-50/50">
+                  <div className="space-y-0.5">
+                    <div className="font-medium text-neutral-800 flex items-center gap-1.5">
+                      <span className="font-mono text-[11px] px-1.5 py-0.5 bg-neutral-100 rounded text-neutral-600">
+                        {job.type}
+                      </span>
+                      <span>批次 {job.id.slice(0, 8)}</span>
+                    </div>
+                    <div className="text-[11px] text-neutral-400">
+                      {new Date(job.createdAt).toLocaleString('zh-CN')}
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-3">
                     <div className="text-right">
-                      <div className="text-xs text-neutral-600">
-                        {job.succeeded}/{job.total} 成功
-                      </div>
-                      {job.failed > 0 && (
-                        <div className="text-[11px] text-red-500">{job.failed} 失败</div>
-                      )}
+                      <span className="text-emerald-600 font-semibold">{job.succeeded}</span>
+                      <span className="text-neutral-400">/{job.total} 成功</span>
                     </div>
                     <span
-                      className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${
+                      className={`px-2 py-0.5 rounded text-[10px] font-medium ${
                         job.status === 'succeeded'
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          ? 'bg-emerald-50 text-emerald-700'
                           : job.status === 'running'
-                          ? 'bg-blue-50 text-blue-700 border border-blue-200 animate-pulse'
+                          ? 'bg-blue-50 text-blue-700 animate-pulse'
                           : job.status === 'failed'
-                          ? 'bg-red-50 text-red-700 border border-red-200'
+                          ? 'bg-red-50 text-red-700'
                           : 'bg-neutral-100 text-neutral-600'
                       }`}
                     >
@@ -274,69 +368,30 @@ export default async function AdminDashboardPage() {
           </div>
         </div>
 
-        {/* 右侧 1 列：系统健康 + 最近操作审计 */}
-        <div className="space-y-6">
-          {/* 系统健康 */}
-          <div className="bg-white rounded-xl border border-neutral-200/80 shadow-xs p-5">
-            <div className="font-semibold text-sm text-neutral-900 mb-4 flex items-center gap-2">
-              <Activity className="w-4 h-4 text-neutral-500" />
-              <span>系统运行指标</span>
-            </div>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2 text-neutral-600">
-                  <Database className="w-3.5 h-3.5" />
-                  <span>PostgreSQL 数据库</span>
-                </div>
-                <div className="flex items-center gap-1 text-emerald-600 font-medium">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>正常</span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2 text-neutral-600">
-                  <HardDrive className="w-3.5 h-3.5" />
-                  <span>Storage 存储桶</span>
-                </div>
-                <div className="flex items-center gap-1 text-emerald-600 font-medium">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>就绪</span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2 text-neutral-600">
-                  <Cpu className="w-3.5 h-3.5" />
-                  <span>AI Provider (LLM/Vision)</span>
-                </div>
-                <div className="flex items-center gap-1 text-emerald-600 font-medium">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>热重载中</span>
-                </div>
-              </div>
-            </div>
+        {/* 审计日志 */}
+        <div className="bg-white rounded-xl border border-neutral-200/80 shadow-xs overflow-hidden">
+          <div className="px-5 py-4 border-b border-neutral-100 flex items-center justify-between">
+            <span className="font-semibold text-sm text-neutral-900">管理操作审计轨迹 (Audit Trail)</span>
+            <span className="text-[11px] text-neutral-400">不可篡改</span>
           </div>
-
-          {/* 最近审计活动 */}
-          <div className="bg-white rounded-xl border border-neutral-200/80 shadow-xs p-5">
-            <div className="font-semibold text-sm text-neutral-900 mb-3">最近审计活动</div>
-            <div className="space-y-2.5">
-              {data.recentAudits.length === 0 ? (
-                <div className="text-xs text-neutral-400 py-3 text-center">暂无审计留痕</div>
-              ) : (
-                data.recentAudits.map((audit) => (
-                  <div key={audit.id} className="text-xs flex items-center justify-between py-1 border-b border-neutral-50 last:border-0">
-                    <span className="font-mono text-neutral-700 truncate max-w-[140px]">
+          <div className="divide-y divide-neutral-100 text-xs">
+            {stats.recentAudits.length === 0 ? (
+              <div className="p-6 text-center text-neutral-400">暂无审计日志</div>
+            ) : (
+              stats.recentAudits.map((audit) => (
+                <div key={audit.id} className="p-3.5 flex items-center justify-between hover:bg-neutral-50/50">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[11px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100">
                       {audit.action}
                     </span>
-                    <span className="text-[10px] text-neutral-400">
-                      {new Date(audit.createdAt).toLocaleTimeString('zh-CN')}
-                    </span>
+                    <span className="text-neutral-600">{audit.resourceType}</span>
                   </div>
-                ))
-              )}
-            </div>
+                  <span className="text-[11px] text-neutral-400 font-mono">
+                    {new Date(audit.createdAt).toLocaleTimeString('zh-CN')}
+                  </span>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>

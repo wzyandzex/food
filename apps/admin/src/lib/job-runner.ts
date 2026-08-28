@@ -12,6 +12,23 @@ export interface CreateJobOptions {
 }
 
 /**
+ * 异步睡眠工具（支持 Jitter 指数退避）
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * 计算带 Jitter 随机抖动的指数退避延迟时间（JOB_SYSTEM.md §3）
+ * attempt 1 -> ~2s, attempt 2 -> ~4s, attempt 3 -> ~8s
+ */
+function calculateBackoffDelay(attempt: number, baseMs: number = 2000, maxMs: number = 10000): number {
+  const expDelay = Math.min(maxMs, baseMs * Math.pow(2, Math.max(0, attempt - 1)))
+  const jitter = Math.random() * 1000 // 0~1000ms 随机扰动
+  return Math.floor(expDelay + jitter)
+}
+
+/**
  * 创建并排队一个异步导入任务
  */
 export async function createImportJob(options: CreateJobOptions): Promise<string> {
@@ -57,20 +74,20 @@ export async function createImportJob(options: CreateJobOptions): Promise<string
 }
 
 /**
- * 执行/推进指定任务的子项处理（支持退避重试、部分成功判断）
+ * 执行/推进指定任务的子项处理（支持 CAS 状态原子抢占、Jitter 指数退避与部分成功判定）
  */
 export async function processJobItems(jobId: string, batchSize: number = 3): Promise<void> {
   const supabase = getAdminClient()
 
-  // 更新主任务为 running
+  // 1. 原子激活主任务状态为 running
   await supabase
     .from('import_jobs')
     .update({ status: 'running', started_at: new Date().toISOString(), updated_at: new Date().toISOString() })
     .eq('id', jobId)
-    .eq('status', 'pending')
+    .in('status', ['pending', 'running'])
 
-  // 获取待处理或重试中的子项
-  const { data: items, error: fetchErr } = await supabase
+  // 2. 获取待处理或待重试的候选子项
+  const { data: candidateItems, error: fetchErr } = await supabase
     .from('import_job_items')
     .select('*')
     .eq('job_id', jobId)
@@ -78,12 +95,12 @@ export async function processJobItems(jobId: string, batchSize: number = 3): Pro
     .order('created_at', { ascending: true })
     .limit(batchSize)
 
-  if (fetchErr || !items || items.length === 0) {
+  if (fetchErr || !candidateItems || candidateItems.length === 0) {
     await updateJobSummaryStatus(jobId)
     return
   }
 
-  for (const item of items) {
+  for (const item of candidateItems) {
     // 若已达最大重试次数则跳过
     if (item.status === 'failed' && item.attempt >= item.max_attempts) {
       continue
@@ -91,7 +108,8 @@ export async function processJobItems(jobId: string, batchSize: number = 3): Pro
 
     const currentAttempt = item.attempt + 1
 
-    await supabase
+    // 3. CAS 原子抢占：仅当状态仍处于 pending 或 failed 时原子抢占成功置为 running
+    const { data: claimed, error: claimError } = await supabase
       .from('import_job_items')
       .update({
         status: 'running',
@@ -100,10 +118,24 @@ export async function processJobItems(jobId: string, batchSize: number = 3): Pro
         updated_at: new Date().toISOString(),
       })
       .eq('id', item.id)
+      .in('status', ['pending', 'failed'])
+      .select('id')
+      .maybeSingle()
+
+    // 抢占失败（已被其他并发 Worker 领取），跳过本项
+    if (claimError || !claimed) {
+      continue
+    }
+
+    // 4. 重试场景执行带 Jitter 的真实指数退避延迟（JOB_SYSTEM.md §3）
+    if (currentAttempt > 1) {
+      const backoffDelay = calculateBackoffDelay(currentAttempt)
+      await sleep(backoffDelay)
+    }
 
     try {
       // 业务处理分流
-      const title = (item.input.title as string) || '未命名菜谱'
+      const title = (item.input?.title as string) || '未命名菜谱'
       const generated = await generateSingleRecipe(title)
 
       const validation = safeParseRecipe(generated)
@@ -121,8 +153,8 @@ export async function processJobItems(jobId: string, batchSize: number = 3): Pro
         .from('import_job_items')
         .update({
           status: 'succeeded',
-          result: { title: validation.data.title, recipeId: saveRes.id },
-          recipe_id: saveRes.id || null,
+          result: { title: validation.data.title, recipeId: saveRes.recipeId },
+          recipe_id: saveRes.recipeId || null,
           completed_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
@@ -145,7 +177,7 @@ export async function processJobItems(jobId: string, batchSize: number = 3): Pro
     }
   }
 
-  // 刷新主任务进度统计
+  // 5. 刷新主任务进度与状态汇总
   await updateJobSummaryStatus(jobId)
 }
 

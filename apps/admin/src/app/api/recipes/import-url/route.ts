@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { safeParseRecipe, formatRecipeIssues, safeFetch } from '@kaifan/shared'
+import { safeParseRecipe, formatRecipeIssues } from '@kaifan/shared'
+import { safeFetch } from '@kaifan/shared/ssrf'
 
 import { saveRecipe } from '@/lib/recipe-importer'
 import { htmlToText, isLikelyUsefulText } from '@/lib/html-text'

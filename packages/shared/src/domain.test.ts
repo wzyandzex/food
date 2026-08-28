@@ -3,9 +3,11 @@ import assert from 'node:assert/strict'
 import {
   isValidRecipeTransition,
   isValidOrderTransition,
+} from './index.ts'
+import {
   isPrivateIp,
   validateSafeUrl,
-} from './index.ts'
+} from './ssrf.ts'
 
 describe('Domain State Machine Transitions', () => {
   it('should enforce valid recipe state transitions', () => {

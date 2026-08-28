@@ -1,6 +1,6 @@
 import Link from 'next/link'
-import { getAdminClient } from '@/lib/supabase'
-import { UtensilsCrossed, Plus, Search, Filter } from 'lucide-react'
+import { getAdminClient, isAdminSupabaseConfigured } from '@/lib/supabase'
+import { Plus } from 'lucide-react'
 
 interface RecipeItem {
   id: string
@@ -15,6 +15,7 @@ interface RecipeItem {
 }
 
 async function fetchRecipes(): Promise<RecipeItem[]> {
+  if (!isAdminSupabaseConfigured()) return []
   try {
     const supabase = getAdminClient()
     const { data } = await supabase

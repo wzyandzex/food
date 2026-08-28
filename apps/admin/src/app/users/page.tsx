@@ -1,5 +1,4 @@
-import { getAdminClient } from '@/lib/supabase'
-import { Users, UserCheck, KeyRound } from 'lucide-react'
+import { getAdminClient, isAdminSupabaseConfigured } from '@/lib/supabase'
 
 interface UserItem {
   id: string
@@ -10,6 +9,7 @@ interface UserItem {
 }
 
 async function fetchUsers(): Promise<UserItem[]> {
+  if (!isAdminSupabaseConfigured()) return []
   try {
     const supabase = getAdminClient()
     const { data } = await supabase

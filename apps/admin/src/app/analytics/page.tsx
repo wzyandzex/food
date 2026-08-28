@@ -1,15 +1,28 @@
-import { getAdminClient } from '@/lib/supabase'
-import { BarChart3, Database, Cpu, HardDrive } from 'lucide-react'
+import { getAdminClient, isAdminSupabaseConfigured } from '@/lib/supabase'
 
 export default async function AnalyticsPage() {
-  const supabase = getAdminClient()
+  let recipesCount = { count: 0 }
+  let cookCount = { count: 0 }
+  let ordersCount = { count: 0 }
+  let ingredientsCount = { count: 0 }
 
-  const [recipesCount, cookCount, ordersCount, ingredientsCount] = await Promise.all([
-    supabase.from('recipes').select('id', { count: 'exact', head: true }),
-    supabase.from('cook_sessions').select('id', { count: 'exact', head: true }),
-    supabase.from('order_sessions').select('id', { count: 'exact', head: true }),
-    supabase.from('ingredients').select('id', { count: 'exact', head: true }),
-  ])
+  if (isAdminSupabaseConfigured()) {
+    try {
+      const supabase = getAdminClient()
+      const [r, c, o, i] = await Promise.all([
+        supabase.from('recipes').select('id', { count: 'exact', head: true }),
+        supabase.from('cook_sessions').select('id', { count: 'exact', head: true }),
+        supabase.from('order_sessions').select('id', { count: 'exact', head: true }),
+        supabase.from('ingredients').select('id', { count: 'exact', head: true }),
+      ])
+      recipesCount = { count: r.count ?? 0 }
+      cookCount = { count: c.count ?? 0 }
+      ordersCount = { count: o.count ?? 0 }
+      ingredientsCount = { count: i.count ?? 0 }
+    } catch {
+      // 降级
+    }
+  }
 
   return (
     <div className="space-y-8">
