@@ -3,6 +3,9 @@ import assert from 'node:assert/strict'
 import {
   isValidRecipeTransition,
   isValidOrderTransition,
+  isValidCircleMealMemoryTransition,
+  safeParseCircleMealMemory,
+  safeParseCircleMealCookSession,
 } from './index.ts'
 import {
   isPrivateIp,
@@ -10,6 +13,13 @@ import {
 } from './ssrf.ts'
 
 describe('Domain State Machine Transitions', () => {
+  it('should enforce valid order state transitions', () => {
+    assert.equal(isValidOrderTransition('closed', 'shopping'), true)
+    assert.equal(isValidOrderTransition('shopping', 'cooking'), true)
+    assert.equal(isValidOrderTransition('shopping', 'done'), true)
+    assert.equal(isValidOrderTransition('open', 'done'), false)
+  })
+
   it('should enforce valid recipe state transitions', () => {
     // 允许 pending -> published
     assert.equal(isValidRecipeTransition('pending', 'published'), true)
@@ -23,17 +33,43 @@ describe('Domain State Machine Transitions', () => {
     assert.equal(isValidRecipeTransition('failed', 'published'), false)
   })
 
-  it('should enforce valid order session state transitions', () => {
-    // 允许 open -> closed
-    assert.equal(isValidOrderTransition('open', 'closed'), true)
-    // 允许 closed -> shopping
-    assert.equal(isValidOrderTransition('closed', 'shopping'), true)
-    // 允许 shopping -> cooking
-    assert.equal(isValidOrderTransition('shopping', 'cooking'), true)
-    // 允许 cooking -> done
-    assert.equal(isValidOrderTransition('cooking', 'done'), true)
-    // 禁止已完成(done)再流转回 open
-    assert.equal(isValidOrderTransition('done', 'open'), false)
+  it('should enforce valid circle meal memory transitions', () => {
+    assert.equal(isValidCircleMealMemoryTransition('draft', 'published'), true)
+    assert.equal(isValidCircleMealMemoryTransition('published', 'withdrawn'), true)
+    assert.equal(isValidCircleMealMemoryTransition('published', 'draft'), false)
+  })
+
+  it('should validate circle meal memory input boundaries', () => {
+    const result = safeParseCircleMealMemory({
+      title: '周末晚餐',
+      mealDate: '2026-08-28',
+      mealType: 'dinner',
+      dishes: [{ title: '番茄炒蛋' }],
+    })
+    assert.equal(result.success, true)
+
+    const invalid = safeParseCircleMealMemory({
+      title: '',
+      mealDate: '28/08/2026',
+      mealType: 'dinner',
+      dishes: [],
+    })
+    assert.equal(invalid.success, false)
+
+    const cookShare = safeParseCircleMealCookSession({
+      sourceCookSessionId: '550e8400-e29b-41d4-a716-446655440000',
+      selectedDishIds: ['550e8400-e29b-41d4-a716-446655440001'],
+      selectedPhotos: [],
+      sharedNote: '这顿饭很香',
+      publish: true,
+    })
+    assert.equal(cookShare.success, true)
+
+    const invalidCookShare = safeParseCircleMealCookSession({
+      sourceCookSessionId: '550e8400-e29b-41d4-a716-446655440000',
+      selectedDishIds: [],
+    })
+    assert.equal(invalidCookShare.success, false)
   })
 })
 

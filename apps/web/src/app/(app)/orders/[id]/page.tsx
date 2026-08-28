@@ -21,6 +21,9 @@ interface OrderDetailPayload {
   title: string
   deadline: string
   status: string
+  circleId: string | null
+  circleName: string | null
+  isHost: boolean
   entries: Array<{ nickname: string; items: OrderItemLike[] }>
   ingredientsSummary: Array<{ name: string; qty: number; unit: string }>
   recipeTitles: Record<string, string>
@@ -40,6 +43,8 @@ export default function OrderSummaryPage() {
 
   const STATUS_ACTIONS: Array<{ status: OrderSessionStatus; label: string; className: string }> = [
     { status: 'closed', label: '⏹ 截单', className: 'bg-fill text-ink' },
+    { status: 'open', label: '重新开放', className: 'bg-fill text-ink' },
+    { status: 'shopping', label: '🛒 开始采购', className: 'bg-tint-soft text-tint-deep' },
     { status: 'cooking', label: '🍳 开始做饭', className: 'bg-tint text-white' },
     { status: 'done', label: '✅ 这顿搞定', className: 'bg-success text-white' },
     { status: 'canceled', label: '取消这顿饭', className: 'bg-danger-soft text-danger' },
@@ -50,8 +55,9 @@ export default function OrderSummaryPage() {
       ? ((
           {
             open: ['closed', 'canceled'],
-            closed: ['cooking', 'canceled'],
-            cooking: ['done'],
+            closed: ['shopping', 'cooking', 'canceled', 'open'],
+            shopping: ['cooking', 'done', 'canceled'],
+            cooking: ['done', 'canceled'],
             done: [],
             canceled: [],
           } as Record<string, OrderSessionStatus[]>
@@ -167,8 +173,8 @@ export default function OrderSummaryPage() {
               截止 {new Date(data.deadline).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
             </p>
 
-            {/* 状态操作 */}
-            {availableActions.length > 0 && (
+            {/* 状态操作，仅发起人可用 */}
+            {data.isHost && availableActions.length > 0 && (
               <div className="flex flex-wrap gap-1.5 pt-2 border-t border-line">
                 {STATUS_ACTIONS.filter((action) => availableActions.includes(action.status)).map(
                   (action) => (
@@ -188,7 +194,7 @@ export default function OrderSummaryPage() {
           </section>
 
           {/* 分享链接 */}
-          {data.shareToken && (
+          {data.isHost && data.shareToken && (
             <section className="card p-4 space-y-2">
               <h2 className="text-[13px] font-medium text-ink-3">分享给好友</h2>
               <div className="flex items-center gap-2">
@@ -239,8 +245,9 @@ export default function OrderSummaryPage() {
             )}
           </section>
 
-          {/* 采购清单 */}
-          <section className="card p-4 space-y-3">
+          {/* 采购清单，仅发起人可用 */}
+          {data.isHost && (
+            <section className="card p-4 space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-[13px] font-medium text-ink-3">采购 / 缺失食材</h2>
               <span className="text-[11px] text-ink-3">按份数合并</span>
@@ -302,6 +309,7 @@ export default function OrderSummaryPage() {
               </>
             )}
           </section>
+          )}
         </div>
       ) : null}
     </div>

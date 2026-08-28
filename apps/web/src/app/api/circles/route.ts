@@ -8,6 +8,9 @@ export interface CircleSummary {
   myRole: 'owner' | 'member'
   memberCount: number
   createdAt: string
+  archiveCount: number
+  latestMealDate: string | null
+  currentOrderStatus: string | null
 }
 
 interface MemberRow {
@@ -39,16 +42,49 @@ export async function GET(request: Request) {
     if (error) throw new Error(error.message)
 
     const rows = (data ?? []) as unknown as MemberRow[]
-    const circles: CircleSummary[] = rows
+    const baseCircles = rows
       .filter((row) => row.circles)
       .map((row) => ({
         id: row.circle_id,
         name: row.circles?.name ?? '',
         ownerId: row.circles?.owner_id ?? '',
-        myRole: row.role === 'owner' ? 'owner' : 'member',
+        myRole: row.role === 'owner' ? ('owner' as const) : ('member' as const),
         memberCount: row.circles?.circle_members?.[0]?.count ?? 1,
         createdAt: row.circles?.created_at ?? '',
       }))
+
+    const circles = await Promise.all(baseCircles.map(async (circle) => {
+      const [{ count: archiveCount }, { data: latestMemory }, { data: currentOrder }] = await Promise.all([
+        supabase
+          .from('circle_meal_memories')
+          .select('id', { count: 'exact', head: true })
+          .eq('circle_id', circle.id)
+          .eq('status', 'published'),
+        supabase
+          .from('circle_meal_memories')
+          .select('meal_date')
+          .eq('circle_id', circle.id)
+          .eq('status', 'published')
+          .order('meal_date', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from('order_sessions')
+          .select('status')
+          .eq('circle_id', circle.id)
+          .in('status', ['open', 'closed', 'shopping', 'cooking'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ])
+
+      return {
+        ...circle,
+        archiveCount: archiveCount ?? 0,
+        latestMealDate: (latestMemory as { meal_date: string } | null)?.meal_date ?? null,
+        currentOrderStatus: (currentOrder as { status: string } | null)?.status ?? null,
+      }
+    }))
 
     return NextResponse.json({ ok: true, circles })
   } catch (err) {

@@ -10,6 +10,7 @@ import { EmptyState, LoginRequired, PageHeader, Segmented } from '@/components/u
 import { getBrowserClient, isSupabaseConfigured } from '@/lib/supabase'
 
 interface DishRow {
+  id: string
   snapshot_title: string
   photos: string[]
   adjust_note: string | null
@@ -46,7 +47,7 @@ export default function LogsPage() {
 
     getBrowserClient()
       .from('cook_sessions')
-      .select('id, date, meal_type, note, rating, cook_dishes(snapshot_title, photos, adjust_note)')
+      .select('id, date, meal_type, note, rating, cook_dishes(id, snapshot_title, photos, adjust_note)')
       .gte('date', cutoff)
       .order('date', { ascending: false })
       .then(({ data, error }) => {
@@ -190,6 +191,16 @@ export default function LogsPage() {
                             )}
                           </div>
                         ))}
+                      </div>
+
+                      {/* 记录操作 */}
+                      <div className="mt-3 flex items-center gap-2">
+                        <Link
+                          href={`/logs/share/${log.id}`}
+                          className="rounded-lg bg-tint-soft px-3 py-1.5 text-[12px] font-semibold text-tint-deep"
+                        >
+                          分享至饭搭子群
+                        </Link>
                       </div>
 
                       {/* 总体心得 */}

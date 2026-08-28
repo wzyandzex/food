@@ -1,19 +1,15 @@
 import { NextResponse } from 'next/server'
-import { ORDER_SESSION_STATUS_LABELS, type OrderSessionStatus } from '@kaifan/shared'
+import {
+  ORDER_SESSION_STATUS_LABELS,
+  type OrderSessionStatus,
+  isValidOrderTransition,
+} from '@kaifan/shared'
 import { createServerClient, getAuthUserId } from '@/lib/supabase'
 import { sendNotificationToUser } from '@/lib/push-notifications'
 
-type OrderStatus = 'open' | 'closed' | 'cooking' | 'done' | 'canceled'
+type OrderStatus = OrderSessionStatus
 
-/** 发起人对点单会话的状态流转（PRD §4.5 状态机 / §6.10）：
- *  open → closed（截单）→ cooking（开做）→ done（完成）；open/closed → canceled（取消） */
-const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  open: ['closed', 'canceled'],
-  closed: ['cooking', 'canceled'],
-  cooking: ['done'],
-  done: [],
-  canceled: [],
-}
+/** 发起人对点单会话的状态流转（PRD §4.5 状态机 / §6.10） */
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const userId = await getAuthUserId(request)
@@ -25,7 +21,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const body = (await request.json().catch(() => null)) as { status?: unknown } | null
   const nextStatus = typeof body?.status === 'string' ? (body.status as OrderStatus) : null
 
-  if (!nextStatus || !(nextStatus in ALLOWED_TRANSITIONS)) {
+  if (!nextStatus || !['open', 'closed', 'shopping', 'cooking', 'done', 'canceled'].includes(nextStatus)) {
     return NextResponse.json({ error: '目标状态不合法' }, { status: 400 })
   }
 
@@ -48,7 +44,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     const currentStatus = session.status as OrderStatus
-    if (!ALLOWED_TRANSITIONS[currentStatus].includes(nextStatus)) {
+    if (!isValidOrderTransition(currentStatus, nextStatus)) {
       return NextResponse.json(
         { error: `当前状态（${currentStatus}）不能变更为 ${nextStatus}` },
         { status: 400 },

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createHash } from 'node:crypto'
-import { createServerClient } from '@/lib/supabase'
+import { createServerClient, getAuthUserId } from '@/lib/supabase'
 import { sendNotificationToUser } from '@/lib/push-notifications'
 
 interface OrderItemInput {
@@ -16,10 +16,10 @@ function hashToken(raw: string): string {
 
 /** 访客/好友提交点单（支持完全免登录，基于 participantToken / clientKey 强哈希隔离） */
 export async function POST(request: Request) {
+  const authenticatedUserId = await getAuthUserId(request)
   const body = (await request.json().catch(() => null)) as {
     token?: string
     nickname?: string
-    userId?: string
     clientKey?: string
     participantToken?: string
     items?: OrderItemInput[]
@@ -77,7 +77,7 @@ export async function POST(request: Request) {
           order_session_id: sessionId,
           participant_token_hash: tokenHash,
           nickname: body.nickname.trim(),
-          user_id: body.userId || null,
+          user_id: authenticatedUserId,
           last_seen_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         },
@@ -104,7 +104,7 @@ export async function POST(request: Request) {
           order_session_id: sessionId,
           participant_id: participantId || null,
           orderer_nickname: body.nickname.trim(),
-          orderer_user_id: body.userId || null,
+          orderer_user_id: authenticatedUserId,
           client_key: tokenHash,
           items: body.items,
           updated_at: new Date().toISOString(),

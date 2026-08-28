@@ -173,7 +173,7 @@ export default function NotificationsPage() {
         <EmptyState
           glyph="📭"
           title="还没有收到过消息"
-          description="当有人向你发起的点单提交菜品、或点单状态变更时，这里会有通知"
+          description="当有人向你发起点单、把一顿饭收进饭搭子群，或点单状态变更时，这里会有通知"
         />
       ) : (
         <div className="mt-4 list-group">

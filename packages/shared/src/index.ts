@@ -1,4 +1,5 @@
 export * from './domain.ts'
 export * from './schema/recipe.ts'
+export * from './schema/circle.ts'
 export * from './samples.ts'
 export * from './date.ts'

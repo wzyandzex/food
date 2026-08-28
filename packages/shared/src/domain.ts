@@ -84,6 +84,98 @@ export function isValidOrderTransition(from: OrderSessionStatus, to: OrderSessio
   return ORDER_SESSION_VALID_TRANSITIONS[from]?.includes(to) ?? false
 }
 
+/** 圈内餐桌档案生命周期：草稿只对创建者可见，发布后对圈内成员可见 */
+export const CIRCLE_MEAL_MEMORY_STATUSES = ['draft', 'published', 'withdrawn'] as const
+export type CircleMealMemoryStatus = (typeof CIRCLE_MEAL_MEMORY_STATUSES)[number]
+
+export const CIRCLE_MEAL_MEMORY_STATUS_LABELS: Record<CircleMealMemoryStatus, string> = {
+  draft: '整理中',
+  published: '圈内可见',
+  withdrawn: '已撤回',
+}
+
+export const CIRCLE_MEAL_MEMORY_VALID_TRANSITIONS: Record<
+  CircleMealMemoryStatus,
+  CircleMealMemoryStatus[]
+> = {
+  draft: ['published', 'withdrawn'],
+  published: ['withdrawn'],
+  withdrawn: [],
+}
+
+export function isValidCircleMealMemoryTransition(
+  from: CircleMealMemoryStatus,
+  to: CircleMealMemoryStatus,
+): boolean {
+  return CIRCLE_MEAL_MEMORY_VALID_TRANSITIONS[from]?.includes(to) ?? false
+}
+
+export const CIRCLE_MEAL_CONTRIBUTION_STATUSES = ['shared', 'withdrawn'] as const
+export type CircleMealContributionStatus = (typeof CIRCLE_MEAL_CONTRIBUTION_STATUSES)[number]
+
+export interface CircleMealDishSnapshot {
+  recipeId?: string | null
+  title: string
+  coverUrl?: string | null
+  servings?: number
+}
+
+export interface CircleMealMemory {
+  id: string
+  circleId: string
+  sourceOrderSessionId?: string | null
+  sourceCookSessionId?: string | null
+  createdBy: string
+  title: string
+  mealDate: string
+  mealType: MealType
+  status: CircleMealMemoryStatus
+  coverUrl?: string | null
+  sharedNote?: string | null
+  dishes: CircleMealDishSnapshot[]
+  publishedAt?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CircleMealAttendee {
+  memoryId: string
+  userId: string
+  nickname: string
+  isMe?: boolean
+}
+
+export interface CircleMealContribution {
+  id: string
+  memoryId: string
+  userId: string
+  nickname: string
+  dishes: CircleMealDishSnapshot[]
+  photos: string[]
+  sharedNote?: string | null
+  rating?: number | null
+  status: CircleMealContributionStatus
+  createdAt: string
+  updatedAt: string
+  isMe?: boolean
+}
+
+export interface CircleMealSummary {
+  id: string
+  sourceOrderSessionId?: string | null
+  sourceCookSessionId?: string | null
+  title: string
+  mealDate: string
+  mealType: MealType
+  status: CircleMealMemoryStatus
+  coverUrl?: string | null
+  dishCount: number
+  attendeeCount: number
+  contributionCount: number
+  createdBy: string
+  publishedAt?: string | null
+}
+
 /** 做饭记录状态机 */
 export const COOK_SESSION_STATUSES = ['planned', 'cooking', 'completed', 'archived'] as const
 export type CookSessionStatus = (typeof COOK_SESSION_STATUSES)[number]

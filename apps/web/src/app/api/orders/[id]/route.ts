@@ -13,6 +13,9 @@ interface OrderDetailPayload {
   title: string
   deadline: string
   status: string
+  circleId: string | null
+  circleName: string | null
+  isHost: boolean
   entries: Array<{ nickname: string; items: OrderItemLike[] }>
   ingredientsSummary: Array<{ name: string; qty: number; unit: string }>
   /** recipeId → 菜谱名（用于明细展示，避免裸 UUID） */
@@ -35,7 +38,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
     const { data: session, error: sessionError } = await supabase
       .from('order_sessions')
-      .select('id, title, deadline, status, host_id')
+      .select('id, title, deadline, status, host_id, circle_id, circles(name)')
       .eq('id', id)
       .maybeSingle()
 
@@ -43,11 +46,26 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       console.error('点单详情查询失败：', sessionError.message)
       return NextResponse.json({ error: '查询点单详情失败' }, { status: 500 })
     }
-    // 不存在或不属于当前用户一律按未找到处理，不泄露他人会话
-    if (!session || session.host_id !== userId) {
+    if (!session) {
       return NextResponse.json({ error: '点单不存在或无权查看' }, { status: 404 })
     }
 
+    // 发起人可看完整汇总；圈内成员只能看经过过滤的圈内订单内容
+    let isHost = session.host_id === userId
+    if (!isHost && session.circle_id) {
+      const { data: membership, error: membershipError } = await supabase
+        .from('circle_members')
+        .select('user_id')
+        .eq('circle_id', session.circle_id)
+        .eq('user_id', userId)
+        .maybeSingle()
+      if (membershipError) throw new Error(membershipError.message)
+      isHost = Boolean(membership)
+    }
+    if (!isHost) {
+      return NextResponse.json({ error: '点单不存在或无权查看' }, { status: 404 })
+    }
+    const isSessionHost = session.host_id === userId
     const { data: entriesData } = await supabase
       .from('order_entries')
       .select('orderer_nickname, items')
@@ -103,16 +121,27 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       }
     }
 
-    // 分享链接仅对发起人暴露：取该会话未撤销且未过期的最新 token
-    const { data: tokenRow } = await supabase
-      .from('share_tokens')
-      .select('token')
-      .eq('order_session_id', id)
-      .eq('revoked', false)
-      .gt('expires_at', new Date().toISOString())
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    const safeEntries = isSessionHost
+      ? entries
+      : entries.map((entry) => ({
+          nickname: entry.nickname,
+          items: entry.items.map(({ note: _note, ...item }) => item),
+        }))
+
+    // 圈友只需要看到选了什么，不应读取忌口备注或采购汇总
+    const visibleIngredientsSummary = isSessionHost ? ingredientsSummary : []
+
+    const { data: tokenRow } = isSessionHost
+      ? await supabase
+          .from('share_tokens')
+          .select('token')
+          .eq('order_session_id', id)
+          .eq('revoked', false)
+          .gt('expires_at', new Date().toISOString())
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : { data: null }
 
     // 点单明细里被点菜谱的 id → 菜名映射（避免页面展示裸 UUID）
     const recipeTitles: Record<string, string> = {}
@@ -131,10 +160,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       title: session.title,
       deadline: session.deadline,
       status: session.status,
-      entries,
-      ingredientsSummary,
+      circleId: session.circle_id ?? null,
+      circleName: ((session.circles as unknown as Array<{ name: string }> | null)?.[0]?.name) ?? null,
+      isHost: isSessionHost,
+      entries: safeEntries,
+      ingredientsSummary: visibleIngredientsSummary,
       recipeTitles,
-      shareToken: tokenRow?.token ?? null,
+      shareToken: isSessionHost ? (tokenRow?.token ?? null) : null,
     }
 
     return NextResponse.json(payload)

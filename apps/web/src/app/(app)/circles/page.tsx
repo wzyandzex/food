@@ -165,7 +165,10 @@ export default function CirclesPage() {
                       </span>
                     )}
                   </div>
-                  <p className="mt-0.5 text-[12px] text-ink-3">{circle.memberCount}/{CIRCLE_MAX_MEMBERS} 位成员</p>
+                  <p className="mt-0.5 text-[12px] text-ink-3">
+                    {circle.currentOrderStatus ? '今天有一顿正在进行' : circle.archiveCount > 0 ? `一起收档了 ${circle.archiveCount} 顿` : `${circle.memberCount}/${CIRCLE_MAX_MEMBERS} 位成员`}
+                    {circle.latestMealDate && !circle.currentOrderStatus ? ` · 最近 ${circle.latestMealDate}` : ''}
+                  </p>
                 </div>
                 <IconChevronRight className="size-4 text-ink-3/60" />
               </Link>
