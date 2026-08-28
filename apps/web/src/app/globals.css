@@ -1,8 +1,134 @@
 @import "tailwindcss";
 
+/* ============================================================
+   开饭 · Mobile Design System
+   关键词：干净 / 克制 / 安静 / 温暖 / 原生感
+   —— 暖纸色底、白卡只用一层、几乎无阴影、hairline 分隔、
+      橙色仅作 accent，排版层级承担结构。
+   ============================================================ */
+
 @theme {
+  /* 画布与表面 */
+  --color-paper: #f7f5f2;         /* 全局底色：暖纸 */
+  --color-surface: #ffffff;       /* 卡片 / 列表表面 */
+  --color-fill: #efece7;          /* 输入框底、次级按钮底 */
+  --color-fill-strong: #e4e0d9;   /* 按压态 / 次级进度 */
+
+  /* 文字（暖黑三级） */
+  --color-ink: #211b16;
+  --color-ink-2: #6f655c;
+  --color-ink-3: #a89e94;
+
+  /* 分隔线：hairline */
+  --color-line: rgb(33 27 22 / 0.08);
+
+  /* 品牌 accent：只在关键动作与数据强调处出现 */
+  --color-tint: #d9480f;
+  --color-tint-deep: #a63305;
+  --color-tint-soft: #f9ece4;
+
+  /* 语义色（低饱和） */
+  --color-success: #3f7d54;
+  --color-success-soft: #ecf3ee;
+  --color-danger: #c2453c;
+  --color-danger-soft: #faeceb;
+  --color-caution: #8a6116;
+  --color-caution-soft: #faf3e2;
+
+  /* 旧 token 别名：兼容遗留引用 */
   --color-brand: #d9480f;
   --color-brand-deep: #a63305;
-  --color-brand-soft: #fff7ed;
-  --color-ink: #26211c;
+  --color-brand-soft: #f9ece4;
+
+  /* 标题衬线：只用于首页大标题，制造生活杂志的一点温度 */
+  --font-display: 'Songti SC', 'STSong', 'Noto Serif SC', 'SimSun', serif;
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    font-family:
+      -apple-system, BlinkMacSystemFont, 'PingFang SC', 'HarmonyOS Sans SC',
+      'Microsoft YaHei', 'Segoe UI', sans-serif;
+  }
+}
+
+@layer components {
+  /* 页面画布：手机宽度 + 底部 Tab 安全留白 */
+  .screen {
+    @apply mx-auto w-full max-w-md px-5 pt-3 pb-28;
+  }
+
+  /* iOS 大标题 */
+  .large-title {
+    @apply text-[28px] leading-tight font-bold tracking-tight;
+  }
+  .page-caption {
+    @apply text-[13px] text-ink-2;
+  }
+
+  /* 分组小节标题（iOS Settings 式的低调灰色小标） */
+  .section-label {
+    @apply mb-2 mt-7 px-1 text-[13px] font-medium text-ink-3;
+  }
+
+  /* 表面：一层白卡，无阴影 */
+  .card {
+    @apply rounded-xl bg-surface;
+  }
+  .list-group {
+    @apply rounded-xl bg-surface overflow-hidden;
+  }
+
+  /* 列表行：Settings 式，按压整行变灰 */
+  .list-row {
+    @apply flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] text-ink transition-colors active:bg-fill;
+  }
+
+  /* iOS 分段控件 */
+  .seg {
+    @apply flex rounded-[10px] bg-fill p-[3px];
+  }
+  .seg-item {
+    @apply flex-1 rounded-[8px] py-[6px] text-[13px] font-medium text-ink-2 transition-colors;
+  }
+  .seg-item-on {
+    @apply bg-surface text-ink shadow-[0_1px_2px_rgb(0_0_0/0.05)];
+  }
+
+  /* 按钮：主 CTA 每屏至多一个 */
+  .btn-primary {
+    @apply inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-tint px-5 py-3 text-[15px] font-semibold text-white transition active:scale-[0.98] disabled:opacity-40;
+  }
+  .btn-tonal {
+    @apply inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-tint-soft px-5 py-3 text-[15px] font-semibold text-tint-deep transition active:scale-[0.98] disabled:opacity-40;
+  }
+  .btn-plain {
+    @apply inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-fill px-5 py-3 text-[15px] font-semibold text-ink transition active:scale-[0.98] disabled:opacity-40;
+  }
+
+  /* 输入：iOS 式灰底无边框 */
+  .field {
+    @apply w-full rounded-xl bg-fill px-3.5 py-2.5 text-[15px] text-ink outline-none placeholder:text-ink-3 focus:bg-surface focus:ring-2 focus:ring-tint/25;
+  }
+  .field-sm {
+    @apply w-full rounded-lg bg-fill px-3 py-2 text-[13px] text-ink outline-none placeholder:text-ink-3 focus:bg-surface focus:ring-2 focus:ring-tint/25;
+  }
+
+  /* Chip：筛选 / 食材 */
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full bg-fill px-3 py-1.5 text-[13px] text-ink-2 transition active:scale-95;
+  }
+  .chip-on {
+    @apply bg-tint text-white;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
 }

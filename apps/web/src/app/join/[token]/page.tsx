@@ -27,7 +27,6 @@ export default function JoinCirclePage({ params }: { params: Promise<{ token: st
     void params.then(({ token: value }) => setToken(value))
   }, [params])
 
-  // 预览邀请信息（无需登录）
   useEffect(() => {
     if (!token) return
     fetch(`/api/join-circle?token=${encodeURIComponent(token)}`)
@@ -39,13 +38,12 @@ export default function JoinCirclePage({ params }: { params: Promise<{ token: st
       .catch((err: Error) => setPreviewError(err.message))
   }, [token])
 
-  // 未登录时记住回跳路径
   useEffect(() => {
     if (!loading && !user && token) {
       try {
         sessionStorage.setItem(REDIRECT_KEY, `/join/${token}`)
       } catch {
-        // 忽略存储失败
+        // 忽略
       }
     }
   }, [loading, user, token])
@@ -76,22 +74,17 @@ export default function JoinCirclePage({ params }: { params: Promise<{ token: st
   }
 
   if (loading || (!token || (preview === null && !previewError))) {
-    return (
-      <main className="mx-auto min-h-dvh w-full max-w-md px-5 pt-10 pb-16 text-center text-xs text-ink/50">
-        正在校验邀请链接…
-      </main>
-    )
+    return <main className="screen text-center text-xs text-ink-3 pt-20">正在校验邀请链接…</main>
   }
 
-  // 无效/过期/已满的友好落地页
   if (previewError) {
     return (
       <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center px-6 text-center">
-        <div className="mb-3 text-4xl">🤔</div>
-        <h1 className="mb-2 text-lg font-bold">无法加入圈子</h1>
-        <p className="mb-6 max-w-xs text-xs leading-5 text-ink/55">{previewError}</p>
-        <Link href="/" className="rounded-xl bg-neutral-100 px-5 py-2.5 text-xs font-semibold text-ink/70">
-          回到首页逛逛菜谱
+        <p className="text-[44px] mb-3">🤔</p>
+        <h1 className="text-[18px] font-bold text-ink">无法加入圈子</h1>
+        <p className="mt-2 mb-6 max-w-xs text-[13px] leading-5 text-ink-3">{previewError}</p>
+        <Link href="/" className="btn-tonal w-auto px-6 py-2.5 text-[14px]">
+          回到首页逛逛
         </Link>
       </main>
     )
@@ -99,66 +92,64 @@ export default function JoinCirclePage({ params }: { params: Promise<{ token: st
 
   if (!preview) return null
 
-  // 加入成功态
   if (joinedCircleId) {
     return (
-      <main className="mx-auto min-h-dvh w-full max-w-md flex flex-col items-center justify-center px-6 text-center">
-        <div className="mb-3 text-5xl">🎉</div>
-        <h1 className="mb-1 text-xl font-bold">{alreadyMember ? '你已经在圈子里啦' : `已加入「${preview.circleName}」`}</h1>
-        <p className="mb-8 text-xs leading-5 text-ink/55">
-          {alreadyMember ? '可以直接进入圈子查看点单动态' : '以后圈内一有新点单，你会第一时间收到通知'}
+      <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center px-6 text-center">
+        <p className="text-[44px] mb-3">🎉</p>
+        <h1 className="text-[20px] font-bold text-ink">
+          {alreadyMember ? '你已经在圈子里啦' : `已加入「${preview.circleName}」`}
+        </h1>
+        <p className="mt-2 mb-8 text-[13px] leading-5 text-ink-2">
+          {alreadyMember ? '可以直接进入圈子查看点单动态' : '圈内一有新点单，你会第一时间收到通知'}
         </p>
         <Link
           href={`/circles/${joinedCircleId}`}
-          className="w-full rounded-2xl bg-brand py-4 font-semibold text-white shadow-sm active:scale-[0.99]"
+          className="btn-primary"
         >
           进入「{preview.circleName}」→
         </Link>
-        <Link href="/" className="mt-4 text-xs text-ink/50 underline">先回首页看看</Link>
+        <Link href="/" className="mt-4 text-[13px] text-ink-3 underline">先回首页看看</Link>
       </main>
     )
   }
 
-  // 未登录：引导登录（登录页读取中转键后自动回来）
   if (!user) {
     return (
       <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center px-6 text-center">
-        <p className="text-4xl mb-3">👥</p>
-        <h1 className="mb-2 text-lg font-bold">
+        <p className="text-[44px] mb-3">👥</p>
+        <h1 className="text-[18px] font-bold text-ink">
           {preview.ownerNickname} 邀请你加入「{preview.circleName}」
         </h1>
-        <p className="mb-8 text-xs leading-5 text-ink/55">
-          圈子成员需要登录账号（这样大家才能互相看到谁在点单）。<br />
-          登录后会自动回到本页面完成加入。
+        <p className="mt-2 mb-8 text-[13px] leading-5 text-ink-3">
+          圈子成员需要登录账号，登录后自动回到本页完成加入
         </p>
-        <Link href="/login" className="rounded-2xl bg-brand px-8 py-3.5 font-semibold text-white shadow-sm active:scale-[0.98]">
+        <Link href="/login" className="btn-primary">
           登录 / 注册后加入
         </Link>
       </main>
     )
   }
 
-  // 登录态：确认加入
   return (
     <main className="mx-auto min-h-dvh w-full max-w-md px-5 pt-16">
-      <header className="mb-8 rounded-2xl bg-brand p-6 text-center text-white shadow-sm">
-        <p className="text-3xl">🍽️</p>
-        <h1 className="mt-2 text-xl font-bold leading-7">
+      <header className="card p-6 text-center space-y-2">
+        <p className="text-[36px]">🍽️</p>
+        <h1 className="text-[20px] font-bold leading-7 text-ink">
           {preview.ownerNickname} 邀请你加入<br />「{preview.circleName}」
         </h1>
-        <p className="mt-1.5 text-[11px] opacity-80">
+        <p className="text-[12px] text-ink-3">
           当前 {preview.memberCount} 位成员{preview.isFull ? ' · 已满员' : ''}
         </p>
       </header>
 
       {preview.isFull ? (
-        <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-center text-xs text-amber-800">
-          这个圈子已满员，请让群主先移出部分成员或另建新圈。
+        <p className="mt-4 card p-3 text-center text-[13px] text-caution bg-caution-soft">
+          这个圈子已满员，请让群主先移出部分成员
         </p>
       ) : (
-        <>
+        <div className="mt-6 space-y-3">
           {joinError && (
-            <p className="mb-3 rounded-xl border border-red-200 bg-red-50 p-3 text-center text-xs text-red-700">
+            <p className="card p-3 text-center text-[12px] text-danger bg-danger-soft">
               {joinError}
             </p>
           )}
@@ -166,16 +157,15 @@ export default function JoinCirclePage({ params }: { params: Promise<{ token: st
             type="button"
             onClick={() => void handleJoin()}
             disabled={joining}
-            className="w-full rounded-2xl bg-brand py-4 font-semibold text-white shadow-sm disabled:opacity-50 active:scale-[0.99]"
+            className="btn-primary"
           >
             {joining ? '加入中…' : '确认加入这个圈子'}
           </button>
-        </>
+        </div>
       )}
 
-      <footer className="mt-10 text-center text-[11px] leading-5 text-ink/40">
-        加入后你在圈内以昵称出现；<br />
-        可随时在圈子页退出。
+      <footer className="mt-8 text-center text-[12px] leading-5 text-ink-3">
+        加入后你在圈内以昵称出现 · 可随时在圈子页退出
       </footer>
     </main>
   )

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { IconCheck } from '@/components/icons'
 
 interface RecipeOption {
   id: string
@@ -24,7 +25,6 @@ export default function OrderForm({
 }: OrderFormProps) {
   const [nickname, setNickname] = useState('')
   const [selectedIds, setSelectedIds] = useState<string[]>([])
-  // 每道已选菜的份数（1-9），默认 1
   const [servingsById, setServingsById] = useState<Record<string, number>>({})
   const [freeTextDish, setFreeTextDish] = useState('')
   const [freeTextServings, setFreeTextServings] = useState(1)
@@ -34,7 +34,6 @@ export default function OrderForm({
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState('')
 
-  // 本地生成/读取持久化的匿名 clientKey
   useEffect(() => {
     let key = localStorage.getItem('kaifan_client_key')
     if (!key) {
@@ -80,12 +79,12 @@ export default function OrderForm({
           e.stopPropagation()
           changeServings(id, -1)
         }}
-        className="size-6 rounded-full border border-neutral-300 bg-white text-xs font-bold text-ink/70 active:bg-neutral-100"
+        className="size-6 rounded-full bg-fill text-[12px] font-bold text-ink-2 active:bg-fill-strong"
         aria-label="减少份数"
       >
         −
       </button>
-      <span className="w-4 text-center text-xs font-semibold text-brand-deep">
+      <span className="w-4 text-center text-[12px] font-semibold text-tint-deep">
         ×{servingsById[id] ?? 1}
       </span>
       <button
@@ -94,7 +93,7 @@ export default function OrderForm({
           e.stopPropagation()
           changeServings(id, 1)
         }}
-        className="size-6 rounded-full border border-neutral-300 bg-white text-xs font-bold text-ink/70 active:bg-neutral-100"
+        className="size-6 rounded-full bg-fill text-[12px] font-bold text-ink-2 active:bg-fill-strong"
         aria-label="增加份数"
       >
         ＋
@@ -159,16 +158,16 @@ export default function OrderForm({
 
   if (success) {
     return (
-      <section className="rounded-2xl bg-white p-8 text-center shadow-sm space-y-4">
-        <div className="text-4xl">🎉</div>
-        <h2 className="text-lg font-bold text-ink">点单成功！</h2>
-        <p className="text-xs text-ink/60 leading-5">
-          大厨已收到你的心愿菜单。稍后大厨可能会发来缺失食材清单让大家帮忙带哦。
+      <section className="card p-8 text-center space-y-3">
+        <p className="text-[44px]">🎉</p>
+        <h2 className="text-[18px] font-bold text-ink">点单成功！</h2>
+        <p className="text-[13px] text-ink-2 leading-5">
+          大厨已收到你的心愿菜单。大厨发来采购清单时记得帮忙带食材哦。
         </p>
         <button
           type="button"
           onClick={() => setSuccess(false)}
-          className="text-xs text-brand underline font-medium"
+          className="text-[13px] text-tint underline font-medium"
         >
           修改我点的菜
         </button>
@@ -177,55 +176,52 @@ export default function OrderForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      {/* 身份区 */}
-      <section className="rounded-2xl bg-white p-5 shadow-sm space-y-3">
-        <label className="block text-xs font-semibold text-ink/70">你的昵称 / 称呼</label>
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {/* 称呼 */}
+      <section className="card p-4 space-y-2">
+        <label className="block text-[12px] font-medium text-ink-3">你的昵称 / 称呼 *</label>
         <input
           type="text"
           value={nickname}
           onChange={(e) => setNickname(e.target.value)}
           placeholder="如：小王、媳妇、阿强"
-          className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm font-medium"
+          className="field text-[14px] font-medium"
           required
         />
       </section>
 
       {/* 候选菜单列表 */}
-      <section className="rounded-2xl bg-white p-5 shadow-sm space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xs font-bold text-ink/80">
+      <section className="space-y-2">
+        <div className="flex items-center justify-between px-1">
+          <h2 className="text-[13px] font-medium text-ink-3">
             候选菜单（已选 {selectedIds.length}/{perPersonLimit}）
           </h2>
         </div>
 
-        <div className="space-y-2">
-          {recipes.map((r) => {
+        <div className="list-group">
+          {recipes.map((r, idx) => {
             const isChecked = selectedIds.includes(r.id)
+            const isLast = idx === recipes.length - 1
             return (
               <div
                 key={r.id}
                 onClick={() => toggleSelect(r.id)}
-                className={`flex items-center justify-between rounded-xl p-3.5 border transition cursor-pointer ${
-                  isChecked
-                    ? 'border-brand bg-brand-soft/40'
-                    : 'border-neutral-100 bg-neutral-50/50'
-                }`}
+                className={`flex cursor-pointer items-center justify-between px-4 py-3 transition-colors active:bg-fill ${
+                  isLast ? '' : 'border-b border-line'
+                } ${isChecked ? 'bg-tint-soft/50' : ''}`}
               >
                 <div>
-                  <p className="text-sm font-semibold text-ink">{r.title}</p>
-                  <p className="text-xs text-ink/50 mt-0.5">⏱ {r.minutes} 分钟 · 难度 {'⭐'.repeat(r.difficulty)}</p>
+                  <p className="text-[15px] font-semibold text-ink">{r.title}</p>
+                  <p className="mt-0.5 text-[12px] text-ink-3">⏱ {r.minutes} 分钟 · {'★'.repeat(r.difficulty)}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   {isChecked && <ServingsStepper id={r.id} />}
                   <div
-                    className={`size-5 rounded-full border flex items-center justify-center text-xs font-bold ${
-                      isChecked
-                        ? 'border-brand bg-brand text-white'
-                        : 'border-neutral-300 bg-white'
+                    className={`flex size-5 items-center justify-center rounded-full border transition-colors ${
+                      isChecked ? 'border-tint bg-tint text-white' : 'border-ink-3/40 bg-surface'
                     }`}
                   >
-                    {isChecked ? '✓' : ''}
+                    {isChecked && <IconCheck className="size-3" />}
                   </div>
                 </div>
               </div>
@@ -234,8 +230,8 @@ export default function OrderForm({
         </div>
 
         {allowFreeInput && (
-          <div className="pt-3 border-t border-neutral-100">
-            <label className="block text-xs font-semibold text-ink/60 mb-1">
+          <div className="card p-4 space-y-2">
+            <label className="block text-[12px] font-medium text-ink-3">
               想吃库里没有的？自由报菜名：
             </label>
             <div className="flex items-center gap-2">
@@ -244,25 +240,23 @@ export default function OrderForm({
                 value={freeTextDish}
                 onChange={(e) => setFreeTextDish(e.target.value)}
                 placeholder="如：可乐鸡翅、清蒸鲈鱼"
-                className="flex-1 rounded-lg border border-neutral-200 px-3 py-2 text-xs"
+                className="field flex-1 text-[13px]"
               />
-              <div className="flex shrink-0 items-center gap-1.5">
+              <div className="flex shrink-0 items-center gap-1">
                 <button
                   type="button"
                   onClick={() => setFreeTextServings((v) => Math.max(1, v - 1))}
-                  className="size-6 rounded-full border border-neutral-300 bg-white text-xs font-bold text-ink/70"
-                  aria-label="减少份数"
+                  className="size-6 rounded-full bg-fill text-[12px] font-bold text-ink-2"
                 >
                   −
                 </button>
-                <span className="w-4 text-center text-xs font-semibold text-brand-deep">
+                <span className="w-4 text-center text-[12px] font-semibold text-tint-deep">
                   ×{freeTextServings}
                 </span>
                 <button
                   type="button"
                   onClick={() => setFreeTextServings((v) => Math.min(9, v + 1))}
-                  className="size-6 rounded-full border border-neutral-300 bg-white text-xs font-bold text-ink/70"
-                  aria-label="增加份数"
+                  className="size-6 rounded-full bg-fill text-[12px] font-bold text-ink-2"
                 >
                   ＋
                 </button>
@@ -273,8 +267,8 @@ export default function OrderForm({
       </section>
 
       {/* 忌口/口味备注 */}
-      <section className="rounded-2xl bg-white p-5 shadow-sm">
-        <label className="block text-xs font-semibold text-ink/70 mb-1">
+      <section className="card p-4 space-y-2">
+        <label className="block text-[12px] font-medium text-ink-3">
           口味 / 忌口备注（选填）
         </label>
         <input
@@ -282,20 +276,16 @@ export default function OrderForm({
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="如：不放香菜、微辣、少油"
-          className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-xs"
+          className="field text-[13px]"
         />
       </section>
 
-      {error && (
-        <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
-          {error}
-        </p>
-      )}
+      {error && <p className="card p-3 text-[12px] text-danger bg-danger-soft">{error}</p>}
 
       <button
         type="submit"
         disabled={submitting}
-        className="w-full rounded-2xl bg-brand py-4 text-center font-semibold text-white shadow-sm disabled:opacity-50 active:scale-98"
+        className="btn-primary"
       >
         {submitting ? '提交中…' : '选好了，提交点单'}
       </button>

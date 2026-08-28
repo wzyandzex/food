@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
+import { Segmented } from '@/components/ui'
 import { getBrowserClient } from '@/lib/supabase'
 
 export default function LoginPage() {
@@ -33,7 +34,6 @@ export default function LoginPage() {
           setError(body.error ?? '注册失败')
           return
         }
-        // 注册成功后直接登录
       }
 
       const supabase = getBrowserClient()
@@ -43,7 +43,6 @@ export default function LoginPage() {
         return
       }
 
-      // 登录前若有待回跳页面（如邀请链接落地页），优先跳转回去
       let redirectTo = '/'
       try {
         const storedRedirect = sessionStorage.getItem('kaifan_redirect_after_login')
@@ -52,7 +51,7 @@ export default function LoginPage() {
           sessionStorage.removeItem('kaifan_redirect_after_login')
         }
       } catch {
-        // 存储不可用时回落首页
+        // 忽略
       }
 
       router.push(redirectTo)
@@ -64,99 +63,101 @@ export default function LoginPage() {
     }
   }
 
+  const MODE_OPTIONS = [
+    { value: 'login' as const, label: '登录' },
+    { value: 'register' as const, label: '注册' },
+  ]
+
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-5 py-10">
-      <div className="mb-8 text-center">
-        <div className="mx-auto mb-3 flex size-14 items-center justify-center rounded-2xl bg-brand text-3xl">
+    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-6 py-10">
+      <div className="mb-6 text-center">
+        <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-2xl bg-tint text-2xl">
           🍚
         </div>
-        <h1 className="text-xl font-bold">开饭</h1>
+        <h1 className="text-[22px] font-bold text-ink">开饭</h1>
+        <p className="text-[13px] text-ink-3">做饭全记录 · 私人生活 App</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="rounded-2xl bg-white p-6 shadow-sm">
-        <div className="mb-5 flex rounded-lg bg-neutral-100 p-1 text-sm">
-          <button
-            type="button"
-            onClick={() => setMode('login')}
-            className={`flex-1 rounded-md py-1.5 font-medium ${mode === 'login' ? 'bg-white shadow-sm' : 'text-neutral-500'}`}
-          >
-            登录
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('register')}
-            className={`flex-1 rounded-md py-1.5 font-medium ${mode === 'register' ? 'bg-white shadow-sm' : 'text-neutral-500'}`}
-          >
-            注册
-          </button>
+      <form onSubmit={handleSubmit} className="card p-5 space-y-3">
+        <Segmented options={MODE_OPTIONS} value={mode} onChange={setMode} />
+
+        <div className="pt-2">
+          <label htmlFor="email" className="mb-1 block text-[12px] font-medium text-ink-3">
+            邮箱
+          </label>
+          <input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
+            className="field text-[14px]"
+            placeholder="you@example.com"
+            required
+          />
         </div>
 
-        <label htmlFor="email" className="mb-1 block text-sm font-medium">
-          邮箱
-        </label>
-        <input
-          id="email"
-          type="email"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          autoComplete="email"
-          className="mb-3 w-full rounded-lg border border-neutral-300 px-3.5 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-          placeholder="you@example.com"
-        />
-
-        <label htmlFor="password" className="mb-1 block text-sm font-medium">
-          密码
-        </label>
-        <input
-          id="password"
-          type="password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-          className="mb-3 w-full rounded-lg border border-neutral-300 px-3.5 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-          placeholder={mode === 'register' ? '至少 6 位' : ''}
-        />
+        <div>
+          <label htmlFor="password" className="mb-1 block text-[12px] font-medium text-ink-3">
+            密码
+          </label>
+          <input
+            id="password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+            className="field text-[14px]"
+            placeholder={mode === 'register' ? '至少 6 位' : ''}
+            required
+          />
+        </div>
 
         {mode === 'register' && (
           <>
-            <label htmlFor="nickname" className="mb-1 block text-sm font-medium">
-              昵称（选填）
-            </label>
-            <input
-              id="nickname"
-              type="text"
-              value={nickname}
-              onChange={(event) => setNickname(event.target.value)}
-              className="mb-3 w-full rounded-lg border border-neutral-300 px-3.5 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-              placeholder="怎么称呼你"
-            />
+            <div>
+              <label htmlFor="nickname" className="mb-1 block text-[12px] font-medium text-ink-3">
+                昵称（选填）
+              </label>
+              <input
+                id="nickname"
+                type="text"
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                className="field text-[14px]"
+                placeholder="怎么称呼你"
+              />
+            </div>
 
-            <label htmlFor="inviteCode" className="mb-1 block text-sm font-medium">
-              邀请码
-            </label>
-            <input
-              id="inviteCode"
-              type="text"
-              value={inviteCode}
-              onChange={(event) => setInviteCode(event.target.value)}
-              className="mb-3 w-full rounded-lg border border-neutral-300 px-3.5 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-              placeholder="向发起人要一个邀请码"
-            />
+            <div>
+              <label htmlFor="inviteCode" className="mb-1 block text-[12px] font-medium text-ink-3">
+                邀请码 *
+              </label>
+              <input
+                id="inviteCode"
+                type="text"
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value)}
+                className="field text-[14px]"
+                placeholder="向发起人要一个邀请码"
+                required
+              />
+            </div>
           </>
         )}
 
-        {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+        {error && <p className="text-[12px] text-danger bg-danger-soft p-2.5 rounded-lg">{error}</p>}
 
         <button
           type="submit"
           disabled={pending || !email || !password || (mode === 'register' && !inviteCode)}
-          className="w-full rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
+          className="btn-primary"
         >
           {pending ? '处理中…' : mode === 'login' ? '登录' : '注册并登录'}
         </button>
       </form>
 
-      <Link href="/" className="mt-4 text-center text-sm text-ink/50">
+      <Link href="/" className="mt-4 text-center text-[13px] text-ink-3 hover:text-ink">
         ← 先逛逛，不用登录
       </Link>
     </main>

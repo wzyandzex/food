@@ -1,9 +1,10 @@
 'use client'
 
-import Link from 'next/link'
 import { useState } from 'react'
+import Link from 'next/link'
 import type { RecipeV1 } from '@kaifan/shared'
 import { useAuth } from '@/components/auth-provider'
+import { IconCheck } from '@/components/icons'
 
 interface RecipeDetailInteractiveProps {
   recipe: RecipeV1
@@ -19,9 +20,7 @@ export function RecipeDetailInteractive({
   derivedFromId,
 }: RecipeDetailInteractiveProps) {
   const { user, getAccessToken } = useAuth()
-  // 本地交互态：食材勾选「家里有」
   const [haveIngredients, setHaveIngredients] = useState<Record<number, boolean>>({})
-  // 本地交互态：步骤完成进度
   const [doneSteps, setDoneSteps] = useState<Record<number, boolean>>({})
   const [addingToShoppingList, setAddingToShoppingList] = useState(false)
   const [addedSuccess, setAddedSuccess] = useState(false)
@@ -35,7 +34,6 @@ export function RecipeDetailInteractive({
     setDoneSteps((prev) => ({ ...prev, [index]: !prev[index] }))
   }
 
-  // 一键将「家里没有」的食材加入购物清单（支持游客 LocalStorage 暂存）
   const handleAddToShoppingList = async () => {
     const missingIngredients = recipe.ingredients.filter((_, idx) => !haveIngredients[idx])
     if (missingIngredients.length === 0) {
@@ -56,7 +54,6 @@ export function RecipeDetailInteractive({
     }))
 
     try {
-      // 1. 游客模式：直接合并存入 LocalStorage
       if (!user) {
         const raw = localStorage.getItem('kaifan_guest_shopping_list')
         const currentList: typeof itemsToAppend = raw ? JSON.parse(raw) : []
@@ -79,34 +76,23 @@ export function RecipeDetailInteractive({
           }
         }
 
-        localStorage.setItem(
-          'kaifan_guest_shopping_list',
-          JSON.stringify(Array.from(mergedMap.values())),
-        )
+        localStorage.setItem('kaifan_guest_shopping_list', JSON.stringify(Array.from(mergedMap.values())))
         setAddedSuccess(true)
         setTimeout(() => setAddedSuccess(false), 3500)
         return
       }
 
-      // 2. 登录模式：调用服务端 API
       const token = await getAccessToken()
       if (!token) throw new Error('未获取到有效登录令牌')
 
       const res = await fetch('/api/shopping-lists', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          items: itemsToAppend,
-        }),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ items: itemsToAppend }),
       })
 
       const data = (await res.json()) as { ok?: boolean; error?: string }
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error || '加入购物清单失败')
-      }
+      if (!res.ok || !data.ok) throw new Error(data.error || '加入购物清单失败')
 
       setAddedSuccess(true)
       setTimeout(() => setAddedSuccess(false), 3500)
@@ -123,169 +109,154 @@ export function RecipeDetailInteractive({
 
   return (
     <div className="space-y-6">
-      {/* 食材表（含用量、支持勾选「家里有」） */}
-      <section className="rounded-2xl bg-white p-5 shadow-sm">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-semibold">食材清单</h2>
-          <span className="text-xs text-ink/40">点击可勾选「家里有」</span>
+      {/* 食材清单（列表分组，轻量勾选） */}
+      <section>
+        <div className="mb-1.5 flex items-center justify-between px-1">
+          <h2 className="text-[13px] font-medium text-ink-3">食材清单（点击勾选「家里有」）</h2>
+          <span className="text-[12px] text-ink-3">{recipe.ingredients.length} 样</span>
         </div>
-        <ul className="space-y-2 text-sm">
+        <div className="list-group">
           {recipe.ingredients.map((ingredient, index) => {
             const hasIt = Boolean(haveIngredients[index])
+            const isLast = index === recipe.ingredients.length - 1
             return (
-              <li
+              <div
                 key={`${ingredient.name}-${index}`}
                 onClick={() => toggleIngredient(index)}
-                className={`flex cursor-pointer select-none items-center justify-between rounded-xl p-2 transition-colors ${
-                  hasIt ? 'bg-green-50/70 text-green-900' : 'hover:bg-neutral-50'
-                }`}
+                className={`flex cursor-pointer select-none items-center justify-between px-4 py-3 text-sm transition-colors active:bg-fill ${
+                  isLast ? '' : 'border-b border-line'
+                } ${hasIt ? 'bg-fill/50 text-ink-3' : 'text-ink'}`}
               >
-                <div className="flex items-center gap-2.5">
-                  <input
-                    type="checkbox"
-                    checked={hasIt}
-                    onChange={() => {}}
-                    className="size-4 rounded accent-green-600"
-                    aria-label={`标记家里有 ${ingredient.name}`}
-                  />
-                  <span className={hasIt ? 'line-through opacity-70' : ''}>
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`flex size-4.5 items-center justify-center rounded border transition-colors ${
+                      hasIt ? 'border-success bg-success text-white' : 'border-ink-3/40 bg-surface'
+                    }`}
+                  >
+                    {hasIt && <IconCheck className="size-3" />}
+                  </div>
+                  <span className={hasIt ? 'line-through' : 'font-medium'}>
                     {ingredient.name}
-                    {ingredient.optional && (
-                      <span className="ml-1 text-xs text-ink/40">（可选）</span>
-                    )}
+                    {ingredient.optional && <span className="ml-1 text-[11px] text-ink-3">（可选）</span>}
                   </span>
                 </div>
-                <span className="text-xs text-ink/55">
+                <span className="text-[13px] text-ink-2">
                   {ingredient.qty != null ? `${ingredient.qty} ${ingredient.unit ?? ''}` : ''}
                 </span>
-              </li>
+              </div>
             )
           })}
-        </ul>
+        </div>
 
-        {/* 存入购物清单按钮 + 改编按钮 */}
-        <div className="mt-4 pt-3 border-t border-neutral-100 flex flex-col gap-2">
-          {addError && <p className="text-xs text-red-500">{addError}</p>}
-          {addedSuccess ? (
-            <div className="flex items-center justify-between rounded-xl bg-green-50 px-3 py-2 text-xs text-green-800">
-              <span>✓ 已将未备齐食材加入购物清单！</span>
-              <Link href="/shopping-list" className="underline font-semibold">
-                去查看 →
-              </Link>
-            </div>
-          ) : (
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={handleAddToShoppingList}
-                disabled={addingToShoppingList}
-                className="flex-1 rounded-xl bg-brand-soft py-2.5 text-center text-xs font-semibold text-brand-deep active:scale-98 disabled:opacity-50"
-              >
-                {addingToShoppingList ? '正在添加…' : '🛒 缺的进清单'}
-              </button>
-              {recipeId && (
-                <Link
-                  href={`/recipes/${encodeURIComponent(recipeId)}/fork`}
-                  className="flex-1 rounded-xl bg-neutral-100 py-2.5 text-center text-xs font-semibold text-ink/80 active:scale-98"
-                >
-                  ✍️ 改编此菜谱
-                </Link>
-              )}
-            </div>
+        {/* 快捷按钮 */}
+        <div className="mt-2.5 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleAddToShoppingList}
+            disabled={addingToShoppingList}
+            className="flex-1 rounded-xl bg-surface py-2.5 text-center text-[13px] font-semibold text-tint transition active:bg-fill disabled:opacity-40"
+          >
+            {addingToShoppingList ? '正在添加…' : '🛒 缺的进清单'}
+          </button>
+          {recipeId && (
+            <Link
+              href={`/recipes/${encodeURIComponent(recipeId)}/fork`}
+              className="flex-1 rounded-xl bg-surface py-2.5 text-center text-[13px] font-semibold text-ink transition active:bg-fill"
+            >
+              ✍️ 改编此菜
+            </Link>
           )}
         </div>
+        {addError && <p className="mt-1.5 px-1 text-[12px] text-danger">{addError}</p>}
+        {addedSuccess && (
+          <p className="mt-1.5 px-1 text-[12px] text-success font-medium">
+            ✓ 已加入购物清单 · <Link href="/shopping-list" className="underline">去查看</Link>
+          </p>
+        )}
       </section>
 
-      {/* 分步骤做法（支持勾选进度） */}
-      <section className="rounded-2xl bg-white p-5 shadow-sm">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-semibold">做法步骤</h2>
+      {/* 做法步骤 */}
+      <section>
+        <div className="mb-1.5 flex items-center justify-between px-1">
+          <h2 className="text-[13px] font-medium text-ink-3">做法步骤</h2>
           {totalSteps > 0 && (
-            <span className="text-xs text-ink/50">
-              进度 {completedStepsCount}/{totalSteps}（{progressPercent}%）
+            <span className="text-[12px] text-ink-3">
+              已完成 {completedStepsCount}/{totalSteps}
             </span>
           )}
         </div>
 
-        {totalSteps > 0 && (
-          <div className="mb-4 h-1.5 w-full overflow-hidden rounded-full bg-neutral-100">
-            <div
-              className="h-full bg-brand transition-all duration-300"
-              style={{ width: `${progressPercent}%` }}
-            />
+        {totalSteps > 0 && completedStepsCount > 0 && (
+          <div className="mb-2 h-1 w-full overflow-hidden rounded-full bg-fill">
+            <div className="h-full bg-tint transition-all duration-300" style={{ width: `${progressPercent}%` }} />
           </div>
         )}
 
-        <ol className="space-y-3">
+        <div className="list-group">
           {recipe.steps.map((step, index) => {
             const done = Boolean(doneSteps[index])
+            const isLast = index === recipe.steps.length - 1
             return (
-              <li
+              <div
                 key={index}
                 onClick={() => toggleStep(index)}
-                className={`flex cursor-pointer select-none gap-3 rounded-xl p-2.5 text-sm leading-6 transition-colors ${
-                  done ? 'bg-brand-soft/60 text-ink/60' : 'hover:bg-neutral-50'
-                }`}
+                className={`flex cursor-pointer select-none gap-3.5 px-4 py-3.5 text-[14px] leading-6 transition-colors active:bg-fill ${
+                  isLast ? '' : 'border-b border-line'
+                } ${done ? 'bg-fill/40 text-ink-3' : 'text-ink'}`}
               >
                 <span
-                  className={`flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-                    done ? 'bg-green-600 text-white' : 'bg-brand text-white'
+                  className={`flex size-6 shrink-0 items-center justify-center rounded-full text-[12px] font-bold ${
+                    done ? 'bg-success text-white' : 'bg-fill text-ink-2'
                   }`}
                 >
                   {done ? '✓' : index + 1}
                 </span>
-                <span className={done ? 'line-through' : ''}>
+                <span className={`min-w-0 flex-1 ${done ? 'line-through' : ''}`}>
                   {step.text}
                   {step.durationMinutes != null && (
-                    <span className="ml-1 text-xs text-ink/40">
-                      （约 {step.durationMinutes} 分钟）
-                    </span>
+                    <span className="ml-1 text-[12px] text-ink-3">（约 {step.durationMinutes} 分钟）</span>
                   )}
                 </span>
-              </li>
+              </div>
             )
           })}
-        </ol>
+        </div>
       </section>
 
-      {/* 营养估算（选填字段，有才展示，PRD §4.2） */}
+      {/* 营养参考 */}
       {recipe.nutrition && Object.keys(recipe.nutrition).length > 0 && (
-        <section className="rounded-2xl bg-white p-5 shadow-sm">
-          <h2 className="mb-3 font-semibold">营养参考（每份估算）</h2>
-          <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
-            {recipe.nutrition.calories != null && (
-              <div className="rounded-xl bg-neutral-50 p-3 text-center">
-                <span className="text-ink/45">热量</span>
-                <p className="mt-1 font-bold text-ink">{recipe.nutrition.calories} kcal</p>
-              </div>
-            )}
-            {recipe.nutrition.protein != null && (
-              <div className="rounded-xl bg-neutral-50 p-3 text-center">
-                <span className="text-ink/45">蛋白质</span>
-                <p className="mt-1 font-bold text-ink">{recipe.nutrition.protein} g</p>
-              </div>
-            )}
-            {recipe.nutrition.fat != null && (
-              <div className="rounded-xl bg-neutral-50 p-3 text-center">
-                <span className="text-ink/45">脂肪</span>
-                <p className="mt-1 font-bold text-ink">{recipe.nutrition.fat} g</p>
-              </div>
-            )}
-            {recipe.nutrition.carbs != null && (
-              <div className="rounded-xl bg-neutral-50 p-3 text-center">
-                <span className="text-ink/45">碳水</span>
-                <p className="mt-1 font-bold text-ink">{recipe.nutrition.carbs} g</p>
-              </div>
-            )}
+        <section>
+          <h2 className="section-label">营养参考（每份）</h2>
+          <div className="card grid grid-cols-4 divide-x divide-line py-3 text-center">
+            <div>
+              <p className="text-[11px] text-ink-3">热量</p>
+              <p className="mt-0.5 text-[14px] font-bold text-ink">{recipe.nutrition.calories ?? '--'}</p>
+              <p className="text-[10px] text-ink-3">kcal</p>
+            </div>
+            <div>
+              <p className="text-[11px] text-ink-3">蛋白质</p>
+              <p className="mt-0.5 text-[14px] font-bold text-ink">{recipe.nutrition.protein ?? '--'}</p>
+              <p className="text-[10px] text-ink-3">g</p>
+            </div>
+            <div>
+              <p className="text-[11px] text-ink-3">脂肪</p>
+              <p className="mt-0.5 text-[14px] font-bold text-ink">{recipe.nutrition.fat ?? '--'}</p>
+              <p className="text-[10px] text-ink-3">g</p>
+            </div>
+            <div>
+              <p className="text-[11px] text-ink-3">碳水</p>
+              <p className="mt-0.5 text-[14px] font-bold text-ink">{recipe.nutrition.carbs ?? '--'}</p>
+              <p className="text-[10px] text-ink-3">g</p>
+            </div>
           </div>
         </section>
       )}
 
-      {/* 来源与作者署名（PRD §4.2） */}
+      {/* 来源与作者署名 */}
       {(recipe.sourceUrl || recipe.sourceType || recipe.authorNote || derivedFromTitle) && (
-        <footer className="space-y-1.5 rounded-2xl bg-neutral-50 p-4 text-xs text-ink/60">
+        <footer className="card p-4 text-[12px] leading-5 text-ink-2 space-y-1">
           {derivedFromTitle && (
-            <p className="font-semibold text-brand-deep">
+            <p className="font-medium text-tint-deep">
               ✍️ 本菜谱改编自《
               {derivedFromId ? (
                 <Link href={`/recipes/${encodeURIComponent(derivedFromId)}`} className="underline">
@@ -297,18 +268,13 @@ export function RecipeDetailInteractive({
               》
             </p>
           )}
-          {recipe.authorNote && <p className="font-medium text-ink/80">{recipe.authorNote}</p>}
-          <div className="flex flex-wrap items-center gap-2">
-            <span>来源渠道：{recipe.sourceType === 'user' ? '用户原创/改编' : recipe.sourceType}</span>
+          {recipe.authorNote && <p className="text-ink">{recipe.authorNote}</p>}
+          <div className="flex flex-wrap items-center gap-1.5 text-ink-3">
+            <span>来源：{recipe.sourceType === 'user' ? '用户原创/改编' : recipe.sourceType}</span>
             {recipe.sourceUrl && (
               <>
                 <span>·</span>
-                <a
-                  href={recipe.sourceUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-brand underline"
-                >
+                <a href={recipe.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-tint underline">
                   查看原出处 ↗
                 </a>
               </>

@@ -10,6 +10,7 @@ import {
   type RecipeStepV1,
 } from '@kaifan/shared'
 import { useAuth } from '@/components/auth-provider'
+import { IconPlus, IconX } from '@/components/icons'
 
 interface RecipeEditorFormProps {
   initialRecipe?: Partial<RecipeV1>
@@ -40,7 +41,6 @@ export function RecipeEditorForm({ initialRecipe, derivedFromId, parentTitle }: 
       : [{ text: '' }],
   )
 
-  // 营养四格（可整组留空）
   const [calories, setCalories] = useState<string>(
     initialRecipe?.nutrition?.calories != null ? String(initialRecipe.nutrition.calories) : '',
   )
@@ -61,7 +61,6 @@ export function RecipeEditorForm({ initialRecipe, derivedFromId, parentTitle }: 
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  // 食材行操作
   const updateIngredient = (index: number, patch: Partial<RecipeIngredientV1>) => {
     setIngredients((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)))
   }
@@ -71,7 +70,6 @@ export function RecipeEditorForm({ initialRecipe, derivedFromId, parentTitle }: 
     setIngredients((prev) => prev.filter((_, i) => i !== index))
   }
 
-  // 步骤行操作
   const updateStep = (index: number, text: string) => {
     setSteps((prev) => prev.map((item, i) => (i === index ? { ...item, text } : item)))
   }
@@ -81,7 +79,6 @@ export function RecipeEditorForm({ initialRecipe, derivedFromId, parentTitle }: 
     setSteps((prev) => prev.filter((_, i) => i !== index))
   }
 
-  // 标签
   const addTag = (raw: string) => {
     const trimmed = raw.trim().replace(/^#/, '')
     if (trimmed && !tags.includes(trimmed)) setTags([...tags, trimmed])
@@ -93,7 +90,6 @@ export function RecipeEditorForm({ initialRecipe, derivedFromId, parentTitle }: 
     event.preventDefault()
     setError('')
 
-    // 过滤空行
     const cleanIngredients = ingredients.filter((ing) => ing.name.trim())
     const cleanSteps = steps.filter((st) => st.text.trim())
 
@@ -156,77 +152,77 @@ export function RecipeEditorForm({ initialRecipe, derivedFromId, parentTitle }: 
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-5">
       {derivedFromId && parentTitle && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-800">
+        <div className="rounded-xl bg-tint-soft p-3.5 text-[13px] leading-5 text-tint-deep">
           ✍️ 正在改编《<strong>{parentTitle}</strong>》，原作保持不变，你的修改将作为全新菜谱发布并保留改编溯源。
         </div>
       )}
 
       {/* 基础信息 */}
-      <section className="rounded-2xl bg-white p-5 shadow-sm space-y-3">
-        <h2 className="text-xs font-bold text-ink/70">基本信息</h2>
+      <section className="card p-4 space-y-3">
         <div>
-          <label className="mb-1 block text-xs font-semibold text-ink/70">菜名 *</label>
+          <label className="mb-1 block text-[12px] font-medium text-ink-3">菜名 *</label>
           <input
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="如：少油版回锅肉"
             maxLength={80}
-            className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm font-semibold outline-none focus:border-brand"
+            className="field font-semibold"
             required
           />
         </div>
 
         <div className="grid grid-cols-3 gap-2">
           <div>
-            <label className="mb-1 block text-[11px] text-ink/55">几人份</label>
+            <label className="mb-1 block text-center text-[11px] text-ink-3">几人份</label>
             <input
               type="number"
               min={1}
               max={20}
               value={servings}
               onChange={(e) => setServings(Number(e.target.value) || 2)}
-              className="w-full rounded-lg border border-neutral-200 px-2 py-1.5 text-center text-xs outline-none focus:border-brand"
+              className="field text-center"
             />
           </div>
           <div>
-            <label className="mb-1 block text-[11px] text-ink/55">难度 (1-5)</label>
+            <label className="mb-1 block text-center text-[11px] text-ink-3">难度 (1-5)</label>
             <input
               type="number"
               min={1}
               max={5}
               value={difficulty}
               onChange={(e) => setDifficulty(Number(e.target.value) || 2)}
-              className="w-full rounded-lg border border-neutral-200 px-2 py-1.5 text-center text-xs outline-none focus:border-brand"
+              className="field text-center"
             />
           </div>
           <div>
-            <label className="mb-1 block text-[11px] text-ink/55">耗时 (分钟) *</label>
+            <label className="mb-1 block text-center text-[11px] text-ink-3">耗时 (分钟) *</label>
             <input
               type="number"
               min={1}
               value={minutes}
               onChange={(e) => setMinutes(Number(e.target.value) || 20)}
-              className="w-full rounded-lg border border-neutral-200 px-2 py-1.5 text-center text-xs outline-none focus:border-brand"
+              className="field text-center"
               required
             />
           </div>
         </div>
 
-        {/* 标签 chips */}
+        {/* 标签 */}
         <div>
-          <label className="mb-1 block text-[11px] text-ink/55">标签（回车添加）</label>
-          <div className="mb-1.5 flex flex-wrap gap-1">
+          <label className="mb-1 block text-[11px] text-ink-3">标签（回车添加）</label>
+          <div className="mb-1.5 flex flex-wrap gap-1.5">
             {tags.map((tag) => (
-              <span
+              <button
                 key={tag}
+                type="button"
                 onClick={() => removeTag(tag)}
-                className="cursor-pointer rounded-full bg-brand-soft px-2.5 py-0.5 text-xs text-brand-deep"
+                className="chip chip-on text-[12px]"
               >
-                {tag} ×
-              </span>
+                {tag} <span className="opacity-70">×</span>
+              </button>
             ))}
           </div>
           <input
@@ -240,17 +236,17 @@ export function RecipeEditorForm({ initialRecipe, derivedFromId, parentTitle }: 
               }
             }}
             placeholder="输入标签按回车，如：减脂、快手"
-            className="w-full rounded-lg border border-neutral-200 px-3 py-1.5 text-xs outline-none focus:border-brand"
+            className="field text-[13px]"
           />
         </div>
       </section>
 
       {/* 食材表 */}
-      <section className="rounded-2xl bg-white p-5 shadow-sm space-y-2.5">
+      <section className="card p-4 space-y-2.5">
         <div className="flex items-center justify-between">
-          <h2 className="text-xs font-bold text-ink/70">食材清单 *</h2>
-          <button type="button" onClick={addIngredient} className="text-xs font-semibold text-brand">
-            + 加一行食材
+          <h2 className="text-[13px] font-medium text-ink-3">食材清单 *</h2>
+          <button type="button" onClick={addIngredient} className="flex items-center gap-0.5 text-[13px] font-semibold text-tint">
+            <IconPlus className="size-3.5" /> 加一行
           </button>
         </div>
 
@@ -262,7 +258,7 @@ export function RecipeEditorForm({ initialRecipe, derivedFromId, parentTitle }: 
                 value={item.name}
                 onChange={(e) => updateIngredient(index, { name: e.target.value })}
                 placeholder="食材名称（如：西红柿）"
-                className="min-w-0 flex-2 rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs outline-none focus:border-brand"
+                className="field flex-2 text-[13px]"
                 required={index === 0}
               />
               <input
@@ -271,16 +267,16 @@ export function RecipeEditorForm({ initialRecipe, derivedFromId, parentTitle }: 
                 value={item.qty ?? ''}
                 onChange={(e) => updateIngredient(index, { qty: e.target.value ? Number(e.target.value) : undefined })}
                 placeholder="数量"
-                className="w-16 rounded-lg border border-neutral-200 px-2 py-1.5 text-center text-xs outline-none focus:border-brand"
+                className="field w-16 text-center text-[13px]"
               />
               <input
                 type="text"
                 value={item.unit ?? ''}
                 onChange={(e) => updateIngredient(index, { unit: e.target.value || undefined })}
                 placeholder="单位"
-                className="w-14 rounded-lg border border-neutral-200 px-2 py-1.5 text-center text-xs outline-none focus:border-brand"
+                className="field w-14 text-center text-[13px]"
               />
-              <label className="flex shrink-0 items-center gap-1 text-[10px] text-ink/50">
+              <label className="flex shrink-0 items-center gap-1 text-[11px] text-ink-3">
                 <input
                   type="checkbox"
                   checked={Boolean(item.optional)}
@@ -293,9 +289,9 @@ export function RecipeEditorForm({ initialRecipe, derivedFromId, parentTitle }: 
                 <button
                   type="button"
                   onClick={() => removeIngredient(index)}
-                  className="p-1 text-xs text-neutral-300 hover:text-red-400"
+                  className="p-1 text-ink-3 hover:text-danger"
                 >
-                  ✕
+                  <IconX className="size-3.5" />
                 </button>
               )}
             </div>
@@ -303,19 +299,19 @@ export function RecipeEditorForm({ initialRecipe, derivedFromId, parentTitle }: 
         </div>
       </section>
 
-      {/* 步骤表 */}
-      <section className="rounded-2xl bg-white p-5 shadow-sm space-y-2.5">
+      {/* 做法步骤 */}
+      <section className="card p-4 space-y-2.5">
         <div className="flex items-center justify-between">
-          <h2 className="text-xs font-bold text-ink/70">做法步骤 *</h2>
-          <button type="button" onClick={addStep} className="text-xs font-semibold text-brand">
-            + 加一步
+          <h2 className="text-[13px] font-medium text-ink-3">做法步骤 *</h2>
+          <button type="button" onClick={addStep} className="flex items-center gap-0.5 text-[13px] font-semibold text-tint">
+            <IconPlus className="size-3.5" /> 加一步
           </button>
         </div>
 
         <div className="space-y-2">
           {steps.map((step, index) => (
             <div key={index} className="flex gap-2">
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand text-[11px] font-bold text-white">
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-tint text-[11px] font-bold text-white">
                 {index + 1}
               </span>
               <textarea
@@ -323,16 +319,16 @@ export function RecipeEditorForm({ initialRecipe, derivedFromId, parentTitle }: 
                 onChange={(e) => updateStep(index, e.target.value)}
                 placeholder={`第 ${index + 1} 步详细做法`}
                 rows={2}
-                className="min-w-0 flex-1 rounded-lg border border-neutral-200 p-2 text-xs leading-5 outline-none focus:border-brand"
+                className="field min-w-0 flex-1 text-[13px] leading-5"
                 required={index === 0}
               />
               {steps.length > 1 && (
                 <button
                   type="button"
                   onClick={() => removeStep(index)}
-                  className="self-start p-1 text-xs text-neutral-300 hover:text-red-400"
+                  className="self-start p-1 text-ink-3 hover:text-danger"
                 >
-                  ✕
+                  <IconX className="size-3.5" />
                 </button>
               )}
             </div>
@@ -340,63 +336,62 @@ export function RecipeEditorForm({ initialRecipe, derivedFromId, parentTitle }: 
         </div>
       </section>
 
-      {/* 营养参考（选填，四格可留空） */}
-      <section className="rounded-2xl bg-white p-5 shadow-sm space-y-2.5">
+      {/* 营养参考 */}
+      <section className="card p-4 space-y-2.5">
         <div className="flex items-center justify-between">
-          <h2 className="text-xs font-bold text-ink/70">营养参考（每人份估算，选填）</h2>
-          <span className="text-[10px] text-ink/40">健身/饮食管理人群参考</span>
+          <h2 className="text-[13px] font-medium text-ink-3">营养参考（每人份估算，选填）</h2>
         </div>
         <div className="grid grid-cols-4 gap-2">
           <div>
-            <label className="mb-1 block text-center text-[10px] text-ink/45">热量 kcal</label>
+            <label className="mb-1 block text-center text-[10px] text-ink-3">热量 kcal</label>
             <input
               type="number"
               min={0}
               value={calories}
               onChange={(e) => setCalories(e.target.value)}
-              placeholder="如:200"
-              className="w-full rounded-lg border border-neutral-200 py-1.5 text-center text-xs outline-none focus:border-brand"
+              placeholder="200"
+              className="field text-center text-[12px]"
             />
           </div>
           <div>
-            <label className="mb-1 block text-center text-[10px] text-ink/45">蛋白质 g</label>
+            <label className="mb-1 block text-center text-[10px] text-ink-3">蛋白质 g</label>
             <input
               type="number"
               min={0}
               value={protein}
               onChange={(e) => setProtein(e.target.value)}
-              placeholder="如:12"
-              className="w-full rounded-lg border border-neutral-200 py-1.5 text-center text-xs outline-none focus:border-brand"
+              placeholder="12"
+              className="field text-center text-[12px]"
             />
           </div>
           <div>
-            <label className="mb-1 block text-center text-[10px] text-ink/45">脂肪 g</label>
+            <label className="mb-1 block text-center text-[10px] text-ink-3">脂肪 g</label>
             <input
               type="number"
               min={0}
               value={fat}
               onChange={(e) => setFat(e.target.value)}
-              placeholder="如:8"
-              className="w-full rounded-lg border border-neutral-200 py-1.5 text-center text-xs outline-none focus:border-brand"
+              placeholder="8"
+              className="field text-center text-[12px]"
             />
           </div>
           <div>
-            <label className="mb-1 block text-center text-[10px] text-ink/45">碳水 g</label>
+            <label className="mb-1 block text-center text-[10px] text-ink-3">碳水 g</label>
             <input
               type="number"
               min={0}
               value={carbs}
               onChange={(e) => setCarbs(e.target.value)}
-              placeholder="如:15"
-              className="w-full rounded-lg border border-neutral-200 py-1.5 text-center text-xs outline-none focus:border-brand"
+              placeholder="15"
+              className="field text-center text-[12px]"
             />
           </div>
         </div>
       </section>
 
-      {/* 改编心得 / 作者备注 */}
-      <section className="rounded-2xl bg-white p-5 shadow-sm space-y-2">
-        <label className="block text-xs font-bold text-ink/70">
+      {/* 心得 / 备注 */}
+      <section className="card p-4 space-y-2">
+        <label className="block text-[13px] font-medium text-ink-3">
           {derivedFromId ? '改编心得 / 调整说明' : '作者小贴士（选填）'}
         </label>
         <textarea
@@ -405,16 +400,16 @@ export function RecipeEditorForm({ initialRecipe, derivedFromId, parentTitle }: 
           placeholder={derivedFromId ? '例如：少放了一半油，加了一点陈醋更爽口' : '例如：火候一定要大，蛋液凝固立刻盛出'}
           rows={2}
           maxLength={500}
-          className="w-full rounded-lg border border-neutral-200 p-2.5 text-xs leading-5 outline-none focus:border-brand"
+          className="field text-[13px] leading-5"
         />
       </section>
 
-      {error && <p className="rounded-xl bg-red-50 p-3 text-xs leading-5 text-red-700">{error}</p>}
+      {error && <p className="card p-3 text-[12px] leading-5 text-danger bg-danger-soft">{error}</p>}
 
       <button
         type="submit"
         disabled={submitting}
-        className="w-full rounded-2xl bg-brand py-4 font-semibold text-white shadow-sm disabled:opacity-50 active:scale-[0.99]"
+        className="btn-primary"
       >
         {submitting ? '发布中…' : derivedFromId ? '发布我的改编版' : '发布自建菜谱'}
       </button>
